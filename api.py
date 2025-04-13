@@ -1,6 +1,6 @@
 import os
-from fastapi import FastAPI, Query, Request
-from typing import Optional, Dict, List
+from fastapi import FastAPI, Query, Request, HTTPException, Path
+from typing import Optional, Dict, List, Any
 import uvicorn
 from finvizfinance.quote import finvizfinance
 from finvizfinance.screener.overview import Overview
@@ -10,7 +10,7 @@ from finvizfinance.news import News
 from finvizfinance.insider import Insider
 from finvizfinance.future import Future
 from custom_calendar import CustomCalendar
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import pandas as pd
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +19,9 @@ import time
 import asyncio
 from cachetools import TTLCache, cached
 from functools import wraps
+from api_config import custom_openapi, setup_middleware, RATE_LIMIT_REQUESTS
+from rate_limiter import RateLimiter
+from datetime import datetime
 
 # Initialize caches with TTL (Time To Live)
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
@@ -26,10 +29,17 @@ screener_cache = TTLCache(maxsize=50, ttl=600)  # 10 minutes cache for screener 
 calendar_cache = TTLCache(maxsize=10, ttl=1800)  # 30 minutes cache for calendar data
 
 app = FastAPI(
-    title="FinViz API",
-    description="API for accessing FinViz financial data",
+    title="Market Data API",
+    description="A comprehensive API for accessing market data, economic calendar, and stock information",
     version="1.0.0"
 )
+
+# Setup middleware
+setup_middleware(app)
+app.add_middleware(RateLimiter, requests_per_minute=RATE_LIMIT_REQUESTS)
+
+# Custom OpenAPI schema
+app.openapi = lambda: custom_openapi(app)
 
 # Add GZip compression
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -43,46 +53,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Rate limiting middleware
-class RateLimiter:
-    def __init__(self, requests_per_minute=60):
-        self.requests_per_minute = requests_per_minute
-        self.requests = {}
-
-    async def __call__(self, request: Request, call_next):
-        client_ip = request.client.host
-        now = time.time()
-        
-        # Clean old requests
-        self.requests = {ip: reqs for ip, reqs in self.requests.items() 
-                        if now - reqs[-1] < 60}
-        
-        # Check rate limit
-        if client_ip in self.requests:
-            if len(self.requests[client_ip]) >= self.requests_per_minute:
-                return JSONResponse(
-                    status_code=429,
-                    content={"error": "Too many requests. Please try again later."}
-                )
-            self.requests[client_ip].append(now)
-        else:
-            self.requests[client_ip] = [now]
-        
-        # Make sure we're not returning a coroutine
-        response = await call_next(request)
-        return response
-
-app.middleware("http")(RateLimiter())
-
+# Response Models
 class StockResponse(BaseModel):
     """Response model for stock information"""
-    fundamentals: Dict = {}
-    description: str = ""
-    ratings: List[Dict] = []
-    news: List[Dict] = []
-    insider_trading: List[Dict] = []
-    signal: Dict = {}
-    full_info: Dict = {}
+    fundamentals: Dict[str, Any]
+    description: Dict[str, Any]
+    ratings: Dict[str, Any]
+    news: Dict[str, Any]
+    insider_trading: Dict[str, Any]
+    signal: Dict[str, Any]
+    full_info: Dict[str, Any]
 
 class ScreenerFilters(BaseModel):
     """Filters for stock screener"""
@@ -90,13 +70,34 @@ class ScreenerFilters(BaseModel):
     Sector: Optional[str] = None
     Industry: Optional[str] = None
     Country: Optional[str] = None
-    # Add more filter options as needed
 
 class CalendarFilter(BaseModel):
     """Filters for economic calendar"""
     date: Optional[str] = None
     impact: Optional[str] = None
     release: Optional[str] = None
+
+class CalendarEvent(BaseModel):
+    Date: str
+    Time: str
+    Datetime: str
+    Release: str
+    Impact: str
+    For: str
+    Actual: Optional[str]
+    Expected: Optional[str]
+    Prior: Optional[str]
+
+class CalendarResponse(BaseModel):
+    events: List[CalendarEvent]
+    total_events: int
+    available_dates: List[str]
+
+class CalendarSummary(BaseModel):
+    overall_summary: Dict[str, int]
+    today_summary: Dict[str, int]
+    total_events: int
+    today_events: int
 
 def async_cached(cache):
     """Decorator for caching async function results"""
@@ -114,435 +115,161 @@ def async_cached(cache):
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to FinViz API"}
+    return {"message": "Welcome to Market Data API"}
 
-@app.get("/stock/{ticker}")
-@cached(cache=stock_cache)
-async def get_stock_info(ticker: str):
-    """Get comprehensive information about a specific stock"""
+@app.get("/stock/{symbol}", response_model=StockResponse, tags=["Stocks"])
+async def get_stock_info(
+    symbol: str = Path(..., description="Stock symbol (e.g., AAPL, MSFT)"),
+    screener: Optional[str] = Query(None, description="Screener to use (e.g., 'overview', 'all')")
+):
+    """
+    Get comprehensive stock information including fundamentals, description, ratings, news, and more.
+    
+    Parameters:
+    - symbol: Stock symbol (e.g., AAPL, MSFT)
+    - screener: Optional screener to use (e.g., 'overview', 'all')
+    """
     try:
-        stock = finvizfinance(ticker)
+        # Initialize stock object
+        stock = finvizfinance(symbol)
         
-        # Helper function to safely convert DataFrame to dict with optimized operations
-        def safe_df_to_dict(df, single_row=False):
-            if not isinstance(df, pd.DataFrame) or df.empty:
-                return {} if single_row else []
-            try:
-                # Use to_dict with orient='records' for better performance
-                return df.to_dict('records')[0] if single_row else df.to_dict('records')
-            except Exception:
-                return {} if single_row else []
+        async def gather_data():
+            tasks = [
+                asyncio.to_thread(lambda: stock.TickerFundament()),
+                asyncio.to_thread(lambda: stock.TickerDescription()),
+                asyncio.to_thread(lambda: stock.TickerRatings()),
+                asyncio.to_thread(lambda: stock.TickerNews()),
+                asyncio.to_thread(lambda: stock.TickerInsider()),
+                asyncio.to_thread(lambda: stock.TickerSignal()),
+                asyncio.to_thread(lambda: stock.TickerFullInfo())
+            ]
+            return await asyncio.gather(*tasks)
         
         # Gather all data concurrently
-        async def gather_data():
-            """Gather all stock data concurrently"""
-            # Use asyncio.to_thread to run synchronous functions in a thread pool
-            tasks = [
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_fundament())),
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_description())),
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_outer_ratings())),
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_news())),
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_inside_trader())),
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_signal())),
-                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_full_info()))
-            ]
-            return await asyncio.gather(*tasks, return_exceptions=True)
+        fundamentals, description, ratings, news, insider, signal, full_info = await gather_data()
         
-        # Get all data concurrently
-        fundamentals, description, ratings_df, news, insider, signal, full_info = await gather_data()
+        # Convert DataFrames to dictionaries
+        def safe_df_to_dict(df):
+            if df is None or df.empty:
+                return {}
+            return df.to_dict('records')
         
-        # Process fundamentals
-        if not isinstance(fundamentals, dict):
-            fundamentals = {}
-            
-        # Process description
-        if isinstance(description, pd.DataFrame):
-            description = description.iloc[0, 0] if not description.empty else ""
-        elif not isinstance(description, str):
-            description = ""
-            
-        # Process ratings
-        ratings = []
-        if isinstance(ratings_df, pd.DataFrame) and not ratings_df.empty:
-            ratings = ratings_df.to_dict('records')
-        
-        # Process signal data
-        signal_dict = {}
-        if signal and isinstance(signal, list) and len(signal) > 0 and any(signal):
-            signal_dict = {
-                'Technical': signal[0] if len(signal) > 0 else {},
-                'Pivot': signal[1] if len(signal) > 1 else {},
-                'Oscillator': signal[2] if len(signal) > 2 else {}
-            }
-        elif isinstance(fundamentals, dict):
-            signal_dict = {
-                'Technical': {
-                    'RSI': fundamentals.get('RSI (14)', 'N/A'),
-                    'MACD': fundamentals.get('MACD', 'N/A'),
-                    'MA50': fundamentals.get('SMA50', 'N/A'),
-                    'MA200': fundamentals.get('SMA200', 'N/A')
-                },
-                'Pivot': {
-                    'Pivot': fundamentals.get('Pivot', 'N/A'),
-                    'Support1': fundamentals.get('S1', 'N/A'),
-                    'Support2': fundamentals.get('S2', 'N/A'),
-                    'Resistance1': fundamentals.get('R1', 'N/A'),
-                    'Resistance2': fundamentals.get('R2', 'N/A')
-                },
-                'Oscillator': {
-                    'StochRSI': fundamentals.get('StochRSI', 'N/A'),
-                    'StochRSI_K': fundamentals.get('StochRSI_K', 'N/A'),
-                    'StochRSI_D': fundamentals.get('StochRSI_D', 'N/A')
-                }
-            }
-        
-        # Process full info
-        if not full_info and isinstance(fundamentals, dict):
-            full_info = {
-                'Company': fundamentals.get('Company', 'N/A'),
-                'Sector': fundamentals.get('Sector', 'N/A'),
-                'Industry': fundamentals.get('Industry', 'N/A'),
-                'Country': fundamentals.get('Country', 'N/A'),
-                'Market Cap': fundamentals.get('Market Cap', 'N/A'),
-                'P/E': fundamentals.get('P/E', 'N/A'),
-                'EPS': fundamentals.get('EPS (ttm)', 'N/A'),
-                'Dividend': fundamentals.get('Dividend TTM', 'N/A'),
-                'Beta': fundamentals.get('Beta', 'N/A'),
-                'RSI': fundamentals.get('RSI (14)', 'N/A'),
-                'MACD': fundamentals.get('MACD', 'N/A'),
-                'MA50': fundamentals.get('SMA50', 'N/A'),
-                'MA200': fundamentals.get('SMA200', 'N/A'),
-                'Volume': fundamentals.get('Volume', 'N/A'),
-                'Avg Volume': fundamentals.get('Avg Volume', 'N/A'),
-                'Price': fundamentals.get('Price', 'N/A'),
-                'Change': fundamentals.get('Change', 'N/A')
-            }
-        
-        if not any([fundamentals, description, ratings, news, insider, signal_dict, full_info]):
-            return {"error": "No data available for ticker"}
-            
-        # Make sure we're returning a StockResponse object, not a coroutine
         return StockResponse(
-            fundamentals=fundamentals,
-            description=description,
-            ratings=ratings,
-            news=news,
-            insider_trading=insider,
-            signal=signal_dict,
-            full_info=full_info
+            fundamentals=safe_df_to_dict(fundamentals),
+            description=safe_df_to_dict(description),
+            ratings=safe_df_to_dict(ratings),
+            news=safe_df_to_dict(news),
+            insider_trading=safe_df_to_dict(insider),
+            signal=safe_df_to_dict(signal),
+            full_info=safe_df_to_dict(full_info)
         )
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/screener/overview")
-async def get_screener_overview(filters: ScreenerFilters):
-    """Get stock screener overview with specified filters"""
-    try:
-        # Create a cache key from the filters
-        cache_key = f"overview_{hash(str(filters.dict(exclude_none=True)))}"
-        
-        # Check cache first
-        if cache_key in screener_cache:
-            return screener_cache[cache_key]
-            
-        overview = Overview()
-        if filters:
-            overview.set_filter(filters_dict=filters.dict(exclude_none=True))
-        df = overview.screener_view()
-        # Replace NaN values with None before converting to JSON
-        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
-        result = df.to_dict('records')
-        
-        # Store in cache
-        screener_cache[cache_key] = result
-        return result
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/screener/valuation")
-async def get_screener_valuation(filters: ScreenerFilters):
-    """Get stock screener valuation metrics with specified filters"""
-    try:
-        # Create a cache key from the filters
-        cache_key = f"valuation_{hash(str(filters.dict(exclude_none=True)))}"
-        
-        # Check cache first
-        if cache_key in screener_cache:
-            return screener_cache[cache_key]
-            
-        valuation = Valuation()
-        if filters:
-            valuation.set_filter(filters_dict=filters.dict(exclude_none=True))
-        df = valuation.screener_view()
-        # Replace NaN values with None before converting to JSON
-        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
-        result = df.to_dict('records')
-        
-        # Store in cache
-        screener_cache[cache_key] = result
-        return result
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/screener/financial")
-async def get_screener_financial(filters: ScreenerFilters):
-    """Get stock screener financial metrics with specified filters"""
-    try:
-        # Create a cache key from the filters
-        cache_key = f"financial_{hash(str(filters.dict(exclude_none=True)))}"
-        
-        # Check cache first
-        if cache_key in screener_cache:
-            return screener_cache[cache_key]
-            
-        financial = Financial()
-        if filters:
-            financial.set_filter(filters_dict=filters.dict(exclude_none=True))
-        df = financial.screener_view()
-        # Replace NaN values with None before converting to JSON
-        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
-        result = df.to_dict('records')
-        
-        # Store in cache
-        screener_cache[cache_key] = result
-        return result
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/news")
-async def get_news():
-    """Get latest financial news and blog posts"""
-    try:
-        fnews = News()
-        # Make sure we're not returning a coroutine
-        all_news = fnews.get_news()
-        return {
-            "news": all_news['news'].to_dict('records'),
-            "blogs": all_news['blogs'].to_dict('records')
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/insider")
-async def get_insider_trading(option: str = Query("top owner trade", description="Type of insider trading data")):
-    """Get insider trading information"""
-    try:
-        finsider = Insider(option=option)
-        df = finsider.get_insider()
-        # Replace NaN values with None before converting to JSON
-        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
-        return df.to_dict('records')
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/futures")
-async def get_futures():
-    """Get futures market performance"""
-    try:
-        future = Future()
-        # Make sure we're not returning a coroutine
-        return future.performance().to_dict('records')
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/calendar")
-# Temporarily removing the cache decorator to debug
-# @async_cached(cache=calendar_cache)
+@app.get("/calendar", response_model=CalendarResponse, tags=["Calendar"])
 async def get_calendar():
-    """Get economic calendar events with detailed information"""
+    """
+    Get the economic calendar data.
+    
+    Returns a list of economic events with their details including date, time, release name, and impact.
+    """
     try:
         calendar = CustomCalendar()
-        calendar_data = await calendar.calendar()
+        df = await calendar.calendar()
         
-        if calendar_data.empty:
-            return {
-                "message": "No calendar data available at this time",
-                "calendar": [],
-                "total_events": 0,
-                "dates": []
-            }
+        if df.empty:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "No calendar data available"}
+            )
         
-        # Optimize DataFrame operations
-        calendar_records = calendar_data.to_dict('records')
-        dates = calendar_data['Date'].unique().tolist() if 'Date' in calendar_data.columns else []
+        events = df.to_dict('records')
+        available_dates = sorted(df['Date'].unique().tolist())
         
         return {
-            "calendar": calendar_records,
-            "total_events": len(calendar_records),
-            "dates": dates
+            "events": events,
+            "total_events": len(events),
+            "available_dates": available_dates
         }
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/calendar/filter")
-@async_cached(cache=calendar_cache)
-async def filter_calendar(filters: CalendarFilter):
-    """Filter economic calendar events by date, impact level, or release name"""
+@app.post("/calendar/filter", response_model=CalendarResponse, tags=["Calendar"])
+async def filter_calendar(filter: CalendarFilter):
+    """
+    Filter economic calendar events by date, impact, or release name.
+    
+    Parameters:
+    - date: Filter by date (e.g., "Mon Apr 07")
+    - impact: Filter by impact level (1-3)
+    - release: Filter by release name (e.g., "CPI")
+    """
     try:
         calendar = CustomCalendar()
-        calendar_data = await calendar.calendar()
+        df = await calendar.calendar()
         
-        # Check if the calendar data is empty
-        if calendar_data.empty:
-            return {
-                "message": "No calendar data available at this time",
-                "calendar": [],
-                "total_events": 0,
-                "dates": []
-            }
+        if df.empty:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "No calendar data available"}
+            )
         
-        # Apply filters if provided
-        if filters.date and 'Date' in calendar_data.columns:
-            calendar_data = calendar_data[calendar_data['Date'].str.contains(filters.date, case=False)]
+        # Apply filters
+        if filter.date:
+            df = df[df['Date'] == filter.date]
+        if filter.impact:
+            df = df[df['Impact'] == filter.impact]
+        if filter.release:
+            df = df[df['Release'].str.contains(filter.release, case=False, na=False)]
         
-        if filters.impact and 'Impact' in calendar_data.columns:
-            calendar_data = calendar_data[calendar_data['Impact'].str.contains(filters.impact, case=False)]
-            
-        if filters.release and 'Release' in calendar_data.columns:
-            calendar_data = calendar_data[calendar_data['Release'].str.contains(filters.release, case=False)]
-        
-        # Convert the filtered DataFrame to a list of dictionaries
-        calendar_records = calendar_data.to_dict('records')
+        events = df.to_dict('records')
+        available_dates = sorted(df['Date'].unique().tolist())
         
         return {
-            "calendar": calendar_records,
-            "total_events": len(calendar_records),
-            "dates": list(calendar_data['Date'].unique()) if 'Date' in calendar_data.columns else []
+            "events": events,
+            "total_events": len(events),
+            "available_dates": available_dates
         }
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/calendar/summary")
-@async_cached(cache=calendar_cache)
+@app.get("/calendar/summary", response_model=CalendarSummary, tags=["Calendar"])
 async def get_calendar_summary():
-    """Get a summary of economic calendar events grouped by impact level"""
+    """
+    Get a summary of economic calendar events grouped by impact level.
+    
+    Returns summary statistics including:
+    - Overall summary of events by impact level
+    - Today's events summary
+    - Total number of events
+    - Number of events today
+    """
     try:
         calendar = CustomCalendar()
-        calendar_data = await calendar.calendar()
+        df = await calendar.calendar()
         
-        # Check if the calendar data is empty
-        if calendar_data.empty:
-            return {
-                "message": "No calendar data available at this time",
-                "overall_summary": {},
-                "today_summary": {},
-                "total_events": 0,
-                "today_events": 0
-            }
+        if df.empty:
+            return JSONResponse(
+                status_code=404,
+                content={"message": "No calendar data available"}
+            )
         
-        # Group by impact level and count events
-        impact_summary = {}
-        if 'Impact' in calendar_data.columns:
-            impact_summary = calendar_data.groupby('Impact').size().to_dict()
+        # Get today's date in the format used in the calendar
+        today = datetime.now().strftime("%a %b %d")
         
-        # Get today's events
-        today_summary = {}
-        today_events_count = 0
-        if 'Date' in calendar_data.columns:
-            today = pd.Timestamp.now().strftime('%a %b %d')
-            today_events = calendar_data[calendar_data['Date'].str.contains(today, case=False)]
-            today_events_count = len(today_events)
-            if 'Impact' in today_events.columns:
-                today_summary = today_events.groupby('Impact').size().to_dict()
+        # Calculate summaries
+        overall_summary = df['Impact'].value_counts().to_dict()
+        today_df = df[df['Date'] == today]
+        today_summary = today_df['Impact'].value_counts().to_dict()
         
         return {
-            "overall_summary": impact_summary,
+            "overall_summary": overall_summary,
             "today_summary": today_summary,
-            "total_events": len(calendar_data),
-            "today_events": today_events_count
+            "total_events": len(df),
+            "today_events": len(today_df)
         }
     except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/calendar/upcoming")
-@async_cached(cache=calendar_cache)
-async def get_upcoming_calendar():
-    """Get upcoming economic calendar events"""
-    try:
-        calendar = CustomCalendar()
-        calendar_data = await calendar.calendar()
-        
-        if calendar_data.empty:
-            return {
-                "message": "No calendar data available at this time",
-                "upcoming_events": [],
-                "total_upcoming": 0,
-                "dates": []
-            }
-        
-        # Get current date and time
-        now = pd.Timestamp.now()
-        current_date = now.strftime('%a %b %d')
-        current_time = now.strftime('%H:%M')
-        
-        # Convert current time to minutes since midnight for easier comparison
-        current_hour, current_minute = map(int, current_time.split(':'))
-        current_minutes_since_midnight = current_hour * 60 + current_minute
-        
-        # Filter for upcoming events
-        upcoming_events = []
-        
-        # Process each event
-        for _, event in calendar_data.iterrows():
-            event_date = event.get('Date', '')
-            event_time = event.get('Time', '')
-            
-            # Skip events without date or time
-            if not event_date or not event_time:
-                continue
-            
-            # Convert event date to datetime for proper comparison
-            try:
-                # Extract month and day from the date string (e.g., "Thu Apr 10")
-                date_parts = event_date.split()
-                if len(date_parts) >= 3:
-                    month = date_parts[1]
-                    day = date_parts[2]
-                    
-                    # Get the current year
-                    year = now.year
-                    
-                    # Create a datetime object for the event date
-                    event_date_obj = pd.to_datetime(f"{year} {month} {day}", format="%Y %b %d")
-                    
-                    # Check if event is today
-                    if event_date_obj.date() == now.date():
-                        # Convert event time to minutes since midnight
-                        event_hour, event_minute = map(int, event_time.split(':'))
-                        event_minutes_since_midnight = event_hour * 60 + event_minute
-                        
-                        # Only include if event time is in the future
-                        if event_minutes_since_midnight > current_minutes_since_midnight:
-                            upcoming_events.append(event.to_dict())
-                    # Check if event is in the future
-                    elif event_date_obj.date() > now.date():
-                        upcoming_events.append(event.to_dict())
-            except Exception as e:
-                print(f"Error parsing date/time: {e}")
-                # If parsing fails, skip this event
-                continue
-        
-        # Sort upcoming events by date and time
-        if upcoming_events:
-            upcoming_df = pd.DataFrame(upcoming_events)
-            if 'Datetime' in upcoming_df.columns:
-                upcoming_df = upcoming_df.sort_values('Datetime')
-                upcoming_events = upcoming_df.to_dict('records')
-        
-        # Get unique dates for upcoming events
-        upcoming_dates = []
-        if upcoming_events:
-            upcoming_df = pd.DataFrame(upcoming_events)
-            if 'Date' in upcoming_df.columns:
-                upcoming_dates = upcoming_df['Date'].unique().tolist()
-        
-        return {
-            "upcoming_events": upcoming_events,
-            "total_upcoming": len(upcoming_events),
-            "dates": upcoming_dates
-        }
-    except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT is not set
