@@ -61,11 +61,11 @@ app.add_middleware(
 class StockResponse(BaseModel):
     """Response model for stock information"""
     fundamentals: Dict[str, Any]
-    description: Dict[str, Any]
-    ratings: Dict[str, Any]
-    news: Dict[str, Any]
-    insider_trading: Dict[str, Any]
-    signal: Dict[str, Any]
+    description: str
+    ratings: List[Dict[str, Any]]
+    news: List[Dict[str, Any]]
+    insider_trading: List[Dict[str, Any]]
+    signal: List[str]
     full_info: Dict[str, Any]
 
 class ScreenerFilters(BaseModel):
@@ -166,34 +166,47 @@ async def get_stock_info(
         stock = finvizfinance(symbol)
         
         async def gather_data():
-            tasks = [
-                asyncio.to_thread(lambda: stock.TickerFundament()),
-                asyncio.to_thread(lambda: stock.TickerDescription()),
-                asyncio.to_thread(lambda: stock.TickerRatings()),
-                asyncio.to_thread(lambda: stock.TickerNews()),
-                asyncio.to_thread(lambda: stock.TickerInsider()),
-                asyncio.to_thread(lambda: stock.TickerSignal()),
-                asyncio.to_thread(lambda: stock.TickerFullInfo())
-            ]
-            return await asyncio.gather(*tasks)
+            try:
+                tasks = [
+                    asyncio.to_thread(lambda: stock.ticker_fundament()),
+                    asyncio.to_thread(lambda: stock.ticker_description()),
+                    asyncio.to_thread(lambda: stock.ticker_outer_ratings()),
+                    asyncio.to_thread(lambda: stock.ticker_news()),
+                    asyncio.to_thread(lambda: stock.ticker_inside_trader()),
+                    asyncio.to_thread(lambda: stock.ticker_signal()),
+                    asyncio.to_thread(lambda: stock.ticker_full_info())
+                ]
+                return await asyncio.gather(*tasks, return_exceptions=True)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error gathering data: {str(e)}")
         
         # Gather all data concurrently
         fundamentals, description, ratings, news, insider, signal, full_info = await gather_data()
         
         # Convert DataFrames to dictionaries
-        def safe_df_to_dict(df):
-            if df is None or df.empty:
-                return {}
-            return df.to_dict('records')
+        def safe_df_to_dict(data, field_type="list"):
+            if data is None or isinstance(data, Exception):
+                return [] if field_type == "list" else {}
+            if isinstance(data, dict):
+                return data
+            if isinstance(data, pd.DataFrame):
+                if data.empty:
+                    return [] if field_type == "list" else {}
+                return data.to_dict('records') if field_type == "list" else data.to_dict()
+            if isinstance(data, list):
+                return data
+            if isinstance(data, str):
+                return {"description": data}
+            return [] if field_type == "list" else {}
         
         return StockResponse(
-            fundamentals=safe_df_to_dict(fundamentals),
-            description=safe_df_to_dict(description),
-            ratings=safe_df_to_dict(ratings),
-            news=safe_df_to_dict(news),
-            insider_trading=safe_df_to_dict(insider),
-            signal=safe_df_to_dict(signal),
-            full_info=safe_df_to_dict(full_info)
+            fundamentals=safe_df_to_dict(fundamentals, "dict"),
+            description=description if isinstance(description, str) else "",
+            ratings=safe_df_to_dict(ratings, "list"),
+            news=safe_df_to_dict(news, "list"),
+            insider_trading=safe_df_to_dict(insider, "list"),
+            signal=safe_df_to_dict(signal, "list"),
+            full_info=safe_df_to_dict(full_info, "dict")
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -287,16 +300,84 @@ async def get_news():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/insider", tags=["Insider Trading"])
-async def get_insider_trading(option: str = Query("top owner trade", description="Type of insider trading data")):
-    """Get insider trading information"""
+async def get_insider_trading(option: str = Query(
+    "latest",
+    description="Type of insider trading data to retrieve. Available options: 'latest' (default), 'latest buys', 'latest sales', 'top week', 'top week buys', 'top week sales', 'top owner trade', 'top owner buys', 'top owner sales', or an insider ID number"
+)):
+    """Get insider trading information from FinViz.
+    
+    Returns a list of insider trading activities including:
+    - Ticker symbol
+    - Owner name
+    - Relationship to company
+    - Transaction date
+    - Transaction type (Buy/Sale/Option Exercise)
+    - Cost per share
+    - Number of shares
+    - Total value
+    - Total shares owned
+    - SEC Form 4 filing link
+    
+    The data is sorted by date (most recent first) and includes detailed information about insider trading activities
+    such as executive stock sales, director purchases, and major shareholder transactions.
+    """
     try:
         finsider = Insider(option=option)
-        df = finsider.get_insider()
+        
+        # Get all tables from the page
+        tables = finsider.soup.find_all("table")
+        if not tables:
+            print(f"No tables found for option: {option}")
+            return []
+            
+        # Find the table with insider trading data by looking for expected headers
+        insider_table = None
+        expected_headers = ["Ticker", "Owner", "Relationship", "Date", "Transaction", "Cost", "#Shares", "Value ($)", "#Shares Total", "SEC Form 4"]
+        
+        for table in tables:
+            headers = [th.text.strip() for th in table.find_all("th")]
+            if all(header in headers for header in expected_headers):
+                insider_table = table
+                break
+                
+        if insider_table is None:
+            print(f"Could not find insider trading table with expected headers for option: {option}")
+            return []
+            
+        # Process the table rows
+        rows = insider_table.find_all("tr")[1:]  # Skip header row
+        frame = []
+        
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) < 10:  # We expect at least 10 columns
+                continue
+                
+            info_dict = {
+                "Ticker": cols[0].text.strip(),
+                "Owner": cols[1].text.strip(),
+                "Relationship": cols[2].text.strip(),
+                "Date": cols[3].text.strip(),
+                "Transaction": cols[4].text.strip(),
+                "Cost": cols[5].text.strip(),
+                "#Shares": cols[6].text.strip(),
+                "Value ($)": cols[7].text.strip(),
+                "#Shares Total": cols[8].text.strip(),
+                "SEC Form 4": cols[9].find("a")["href"] if cols[9].find("a") else None
+            }
+            frame.append(info_dict)
+            
+        df = pd.DataFrame(frame)
+        if df.empty:
+            print(f"No insider trading data found for option: {option}")
+            return []
+            
         # Replace NaN values with None before converting to JSON
         df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
         return df.to_dict('records')
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in insider trading: {str(e)}")
+        return []
 
 @app.get("/futures", tags=["Futures"])
 async def get_futures():
