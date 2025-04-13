@@ -326,7 +326,8 @@ async def get_calendar():
     """Get economic calendar events with detailed information"""
     try:
         calendar = CustomCalendar()
-        calendar_data = calendar.calendar()
+        # Make sure to await the async function call
+        calendar_data = await calendar.calendar()
         
         if calendar_data.empty:
             return {
