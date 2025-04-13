@@ -26,12 +26,24 @@ class CustomCalendar:
             df(pandas.DataFrame): economic calendar table
         """
         try:
+            print(f"Making request to URL: {self.url}")
+            
             # Make the request with headers to avoid being blocked
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.url, headers=self.headers, timeout=10) as response:
-                    if response.status != 200:
-                        response.raise_for_status()
-                    html = await response.text()
+                try:
+                    async with session.get(self.url, headers=self.headers, timeout=10) as response:
+                        print(f"Response status: {response.status}")
+                        
+                        if response.status != 200:
+                            error_text = await response.text()
+                            print(f"Error response body: {error_text}")
+                            response.raise_for_status()
+                            
+                        html = await response.text()
+                        print(f"Received HTML response of length: {len(html)}")
+                except aiohttp.ClientError as e:
+                    print(f"HTTP request failed: {e}")
+                    return self._empty_dataframe()
             
             # Parse the HTML
             soup = BeautifulSoup(html, 'html.parser')
@@ -39,6 +51,12 @@ class CustomCalendar:
             # Find all calendar tables
             tables = soup.find_all("table", class_="calendar_table")
             print(f"Found {len(tables)} calendar tables")
+            
+            # If no tables found with the expected class, try to find any table
+            if not tables:
+                print("No tables found with class 'calendar_table', trying to find any table...")
+                tables = soup.find_all("table")
+                print(f"Found {len(tables)} tables without class filter")
             
             frame = []
             current_date = None
@@ -58,6 +76,14 @@ class CustomCalendar:
                 
                 # Process rows
                 rows = table.find_all('tr', class_="styled-row")
+                print(f"Found {len(rows)} rows for date {current_date}")
+                
+                # If no rows found with the expected class, try to find any row
+                if not rows:
+                    print("No rows found with class 'styled-row', trying to find any row...")
+                    rows = table.find_all('tr')
+                    print(f"Found {len(rows)} rows without class filter")
+                
                 for row in rows:
                     cols = row.find_all('td')
                     if len(cols) >= 8:  # We need at least Time, Release, Impact, For, Actual, Expected, Prior
