@@ -22,6 +22,10 @@ from functools import wraps
 from api_config import custom_openapi, setup_middleware, RATE_LIMIT_REQUESTS
 from rate_limiter import RateLimiter
 from datetime import datetime
+from fomc_calendar import FOMCCalendar
+import aiohttp
+from bs4 import BeautifulSoup
+import re
 
 # Initialize caches with TTL (Time To Live)
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
@@ -106,6 +110,24 @@ class HealthCheck(BaseModel):
     uptime: float
     services: Dict[str, str]
 
+# FOMC Response Models
+class FOMCMeeting(BaseModel):
+    """Model for FOMC meeting data"""
+    Date: str
+    Is_Projection: bool
+    Has_Press_Conference: bool
+    Statement_Link: Optional[str] = None
+    Minutes_Link: Optional[str] = None
+    Minutes_Text: Optional[str] = None
+    Minutes_Summary: Optional[str] = None
+
+class FOMCLatestResponse(BaseModel):
+    """Response model for the latest FOMC meeting endpoint"""
+    meeting: Optional[FOMCMeeting] = None
+    next_meeting: Optional[FOMCMeeting] = None
+    status: str
+    error: Optional[str] = None
+
 # Add this near the start of your file, after the imports
 start_time = time.time()
 
@@ -173,6 +195,115 @@ async def get_stock_info(
             signal=safe_df_to_dict(signal),
             full_info=safe_df_to_dict(full_info)
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/screener/overview", tags=["Screener"])
+async def get_screener_overview(filters: ScreenerFilters):
+    """Get stock screener overview with specified filters"""
+    try:
+        # Create a cache key from the filters
+        cache_key = f"overview_{hash(str(filters.dict(exclude_none=True)))}"
+        
+        # Check cache first
+        if cache_key in screener_cache:
+            return screener_cache[cache_key]
+            
+        overview = Overview()
+        if filters:
+            overview.set_filter(filters_dict=filters.dict(exclude_none=True))
+        df = overview.screener_view()
+        # Replace NaN values with None before converting to JSON
+        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
+        result = df.to_dict('records')
+        
+        # Store in cache
+        screener_cache[cache_key] = result
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/screener/valuation", tags=["Screener"])
+async def get_screener_valuation(filters: ScreenerFilters):
+    """Get stock screener valuation metrics with specified filters"""
+    try:
+        # Create a cache key from the filters
+        cache_key = f"valuation_{hash(str(filters.dict(exclude_none=True)))}"
+        
+        # Check cache first
+        if cache_key in screener_cache:
+            return screener_cache[cache_key]
+            
+        valuation = Valuation()
+        if filters:
+            valuation.set_filter(filters_dict=filters.dict(exclude_none=True))
+        df = valuation.screener_view()
+        # Replace NaN values with None before converting to JSON
+        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
+        result = df.to_dict('records')
+        
+        # Store in cache
+        screener_cache[cache_key] = result
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/screener/financial", tags=["Screener"])
+async def get_screener_financial(filters: ScreenerFilters):
+    """Get stock screener financial metrics with specified filters"""
+    try:
+        # Create a cache key from the filters
+        cache_key = f"financial_{hash(str(filters.dict(exclude_none=True)))}"
+        
+        # Check cache first
+        if cache_key in screener_cache:
+            return screener_cache[cache_key]
+            
+        financial = Financial()
+        if filters:
+            financial.set_filter(filters_dict=filters.dict(exclude_none=True))
+        df = financial.screener_view()
+        # Replace NaN values with None before converting to JSON
+        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
+        result = df.to_dict('records')
+        
+        # Store in cache
+        screener_cache[cache_key] = result
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/news", tags=["News"])
+async def get_news():
+    """Get latest financial news and blog posts"""
+    try:
+        fnews = News()
+        all_news = fnews.get_news()
+        return {
+            "news": all_news['news'].to_dict('records'),
+            "blogs": all_news['blogs'].to_dict('records')
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/insider", tags=["Insider Trading"])
+async def get_insider_trading(option: str = Query("top owner trade", description="Type of insider trading data")):
+    """Get insider trading information"""
+    try:
+        finsider = Insider(option=option)
+        df = finsider.get_insider()
+        # Replace NaN values with None before converting to JSON
+        df = df.replace({pd.NA: None, pd.NaT: None, float('nan'): None})
+        return df.to_dict('records')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/futures", tags=["Futures"])
+async def get_futures():
+    """Get futures market performance"""
+    try:
+        future = Future()
+        return future.performance().to_dict('records')
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -311,6 +442,121 @@ async def health_check():
             "calendar_data": calendar_status
         }
     )
+
+@app.get("/fomc/calendar", tags=["FOMC"])
+async def get_fomc_calendar():
+    """Get FOMC meeting calendar data.
+    
+    Returns:
+        dict: A dictionary containing:
+            - past_meetings: List of past FOMC meetings
+            - future_meetings: List of future FOMC meetings
+            - total_meetings: Total number of meetings
+            - years: List of unique years
+    """
+    try:
+        fomc = FOMCCalendar()
+        past_meetings_df, future_meetings_df = await fomc.calendar()
+        
+        # Convert DataFrames to dictionaries
+        past_meetings = past_meetings_df.to_dict(orient='records')
+        future_meetings = future_meetings_df.to_dict(orient='records')
+        
+        # Get unique years
+        all_years = sorted(list(set([meeting['Year'] for meeting in past_meetings + future_meetings])))
+        
+        return {
+            "past_meetings": past_meetings,
+            "future_meetings": future_meetings,
+            "total_meetings": len(past_meetings) + len(future_meetings),
+            "years": all_years
+        }
+    except Exception as e:
+        print(f"Error in FOMC calendar endpoint: {e}")
+        return {
+            "past_meetings": [],
+            "future_meetings": [],
+            "total_meetings": 0,
+            "years": []
+        }
+
+def parse_date(date_str: str, year: int) -> pd.Timestamp:
+    try:
+        # Split on hyphen for multi-day meetings and take first day
+        first_day = date_str.split('-')[0].strip()
+        # Convert month name to number
+        month_map = {
+            'January': 1, 'February': 2, 'March': 3, 'April': 4,
+            'May': 5, 'June': 6, 'July': 7, 'August': 8,
+            'September': 9, 'October': 10, 'November': 11, 'December': 12
+        }
+        # Extract month and day
+        parts = first_day.split()
+        if len(parts) != 2:
+            print(f"Invalid date format: {first_day}")
+            return None
+        month, day = parts[0], int(parts[1])
+        month_num = month_map.get(month)
+        if not month_num:
+            print(f"Invalid month: {month}")
+            return None
+        
+        # Create datetime object - use noon (12:00) for all past dates to ensure consistent ordering
+        dt = datetime(year=year, month=month_num, day=day, hour=12, minute=0, second=0)
+        now = datetime.now()
+        
+        # Only adjust future dates
+        if dt.date() > now.date():
+            dt = datetime(year=year, month=month_num, day=day, hour=0, minute=0, second=0)
+            
+        return pd.Timestamp(dt)
+    except Exception as e:
+        print(f"Error parsing date {date_str}: {e}")
+        return None
+
+@app.get("/fomc/latest", response_model=FOMCLatestResponse, tags=["FOMC"])
+async def get_latest_fomc_meeting():
+    """
+    Get detailed information about the latest and next FOMC meetings.
+    """
+    try:
+        calendar = FOMCCalendar(openai_api_key=os.environ.get("OPENAI_API_KEY"))
+        past_meetings, future_meetings = await calendar.calendar()
+        
+        # Get the latest non-projection meeting
+        latest_meeting = None
+        for _, meeting in past_meetings.iterrows():
+            if not meeting['Is_Projection']:
+                latest_meeting = meeting.copy()
+                # Convert Timestamp to string
+                latest_meeting['Date'] = latest_meeting['Date'].strftime('%Y-%m-%d')
+                break
+        
+        # Get the next meeting
+        next_meeting = None
+        if not future_meetings.empty:
+            next_meeting = future_meetings.iloc[0].copy()
+            # Convert Timestamp to string
+            next_meeting['Date'] = next_meeting['Date'].strftime('%Y-%m-%d')
+            # For future meetings, set links to None
+            next_meeting['Statement_Link'] = None
+            next_meeting['Minutes_Link'] = None
+            next_meeting['Minutes_Text'] = None
+            next_meeting['Minutes_Summary'] = None
+        
+        return FOMCLatestResponse(
+            meeting=FOMCMeeting(**latest_meeting.to_dict()) if latest_meeting is not None else None,
+            next_meeting=FOMCMeeting(**next_meeting.to_dict()) if next_meeting is not None else None,
+            status="success"
+        )
+    except Exception as e:
+        print(f"Error in get_latest_fomc_meeting: {e}")
+        return FOMCLatestResponse(
+            meeting=None,
+            next_meeting=None,
+            status="error",
+            error=str(e)
+        )
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT is not set
