@@ -2,7 +2,6 @@ import re
 import pandas as pd
 import aiohttp
 from bs4 import BeautifulSoup
-import datetime
 
 class CustomCalendar:
     """Custom Calendar implementation for FinViz economic calendar"""
