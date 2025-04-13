@@ -99,6 +99,16 @@ class CalendarSummary(BaseModel):
     total_events: int
     today_events: int
 
+class HealthCheck(BaseModel):
+    status: str
+    version: str
+    timestamp: str
+    uptime: float
+    services: Dict[str, str]
+
+# Add this near the start of your file, after the imports
+start_time = time.time()
+
 def async_cached(cache):
     """Decorator for caching async function results"""
     def decorator(func):
@@ -270,6 +280,37 @@ async def get_calendar_summary():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health", tags=["System"], response_model=HealthCheck)
+async def health_check():
+    """
+    Health check endpoint for monitoring API status.
+    Returns the current status of the API and its services.
+    """
+    try:
+        # Check if we can access FinViz data
+        stock = finvizfinance("AAPL")
+        stock_status = "healthy"
+    except Exception as e:
+        stock_status = f"unhealthy: {str(e)}"
+
+    try:
+        # Check if we can access calendar data
+        calendar = CustomCalendar()
+        calendar_status = "healthy"
+    except Exception as e:
+        calendar_status = f"unhealthy: {str(e)}"
+
+    return HealthCheck(
+        status="healthy",
+        version="1.0.0",
+        timestamp=datetime.now().isoformat(),
+        uptime=time.time() - start_time,
+        services={
+            "stock_data": stock_status,
+            "calendar_data": calendar_status
+        }
+    )
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT is not set
