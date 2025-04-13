@@ -346,7 +346,8 @@ async def get_futures():
         return {"error": str(e)}
 
 @app.get("/calendar")
-@async_cached(cache=calendar_cache)
+# Temporarily removing the cache decorator to debug
+# @async_cached(cache=calendar_cache)
 async def get_calendar():
     """Get economic calendar events with detailed information"""
     try:
@@ -449,6 +450,96 @@ async def get_calendar_summary():
             "today_summary": today_summary,
             "total_events": len(calendar_data),
             "today_events": today_events_count
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/calendar/upcoming")
+@async_cached(cache=calendar_cache)
+async def get_upcoming_calendar():
+    """Get upcoming economic calendar events"""
+    try:
+        calendar = CustomCalendar()
+        calendar_data = await calendar.calendar()
+        
+        if calendar_data.empty:
+            return {
+                "message": "No calendar data available at this time",
+                "upcoming_events": [],
+                "total_upcoming": 0,
+                "dates": []
+            }
+        
+        # Get current date and time
+        now = pd.Timestamp.now()
+        current_date = now.strftime('%a %b %d')
+        current_time = now.strftime('%H:%M')
+        
+        # Convert current time to minutes since midnight for easier comparison
+        current_hour, current_minute = map(int, current_time.split(':'))
+        current_minutes_since_midnight = current_hour * 60 + current_minute
+        
+        # Filter for upcoming events
+        upcoming_events = []
+        
+        # Process each event
+        for _, event in calendar_data.iterrows():
+            event_date = event.get('Date', '')
+            event_time = event.get('Time', '')
+            
+            # Skip events without date or time
+            if not event_date or not event_time:
+                continue
+            
+            # Convert event date to datetime for proper comparison
+            try:
+                # Extract month and day from the date string (e.g., "Thu Apr 10")
+                date_parts = event_date.split()
+                if len(date_parts) >= 3:
+                    month = date_parts[1]
+                    day = date_parts[2]
+                    
+                    # Get the current year
+                    year = now.year
+                    
+                    # Create a datetime object for the event date
+                    event_date_obj = pd.to_datetime(f"{year} {month} {day}", format="%Y %b %d")
+                    
+                    # Check if event is today
+                    if event_date_obj.date() == now.date():
+                        # Convert event time to minutes since midnight
+                        event_hour, event_minute = map(int, event_time.split(':'))
+                        event_minutes_since_midnight = event_hour * 60 + event_minute
+                        
+                        # Only include if event time is in the future
+                        if event_minutes_since_midnight > current_minutes_since_midnight:
+                            upcoming_events.append(event.to_dict())
+                    # Check if event is in the future
+                    elif event_date_obj.date() > now.date():
+                        upcoming_events.append(event.to_dict())
+            except Exception as e:
+                print(f"Error parsing date/time: {e}")
+                # If parsing fails, skip this event
+                continue
+        
+        # Sort upcoming events by date and time
+        if upcoming_events:
+            upcoming_df = pd.DataFrame(upcoming_events)
+            if 'Datetime' in upcoming_df.columns:
+                upcoming_df = upcoming_df.sort_values('Datetime')
+                upcoming_events = upcoming_df.to_dict('records')
+        
+        # Get unique dates for upcoming events
+        upcoming_dates = []
+        if upcoming_events:
+            upcoming_df = pd.DataFrame(upcoming_events)
+            if 'Date' in upcoming_df.columns:
+                upcoming_dates = upcoming_df['Date'].unique().tolist()
+        
+        return {
+            "upcoming_events": upcoming_events,
+            "total_upcoming": len(upcoming_events),
+            "dates": upcoming_dates
         }
     except Exception as e:
         return {"error": str(e)}
