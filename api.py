@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 import time
 import asyncio
 from cachetools import TTLCache, cached
+from functools import wraps
 
 # Initialize caches with TTL (Time To Live)
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
@@ -67,20 +68,24 @@ class RateLimiter:
         else:
             self.requests[client_ip] = [now]
         
-        return await call_next(request)
+        # Make sure we're not returning a coroutine
+        response = await call_next(request)
+        return response
 
 app.middleware("http")(RateLimiter())
 
 class StockResponse(BaseModel):
-    fundamentals: Dict
-    description: str
-    ratings: List[Dict]
-    news: List[Dict]
-    insider_trading: List[Dict]
-    signal: Dict
-    full_info: Dict
+    """Response model for stock information"""
+    fundamentals: Dict = {}
+    description: str = ""
+    ratings: List[Dict] = []
+    news: List[Dict] = []
+    insider_trading: List[Dict] = []
+    signal: Dict = {}
+    full_info: Dict = {}
 
 class ScreenerFilters(BaseModel):
+    """Filters for stock screener"""
     Exchange: Optional[str] = None
     Sector: Optional[str] = None
     Industry: Optional[str] = None
@@ -88,9 +93,24 @@ class ScreenerFilters(BaseModel):
     # Add more filter options as needed
 
 class CalendarFilter(BaseModel):
+    """Filters for economic calendar"""
     date: Optional[str] = None
     impact: Optional[str] = None
     release: Optional[str] = None
+
+def async_cached(cache):
+    """Decorator for caching async function results"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            key = str(args) + str(kwargs)
+            if key in cache:
+                return cache[key]
+            result = await func(*args, **kwargs)
+            cache[key] = result
+            return result
+        return wrapper
+    return decorator
 
 @app.get("/")
 async def root():
@@ -115,14 +135,16 @@ async def get_stock_info(ticker: str):
         
         # Gather all data concurrently
         async def gather_data():
+            """Gather all stock data concurrently"""
+            # Use asyncio.to_thread to run synchronous functions in a thread pool
             tasks = [
-                asyncio.create_task(asyncio.to_thread(stock.ticker_fundament)),
-                asyncio.create_task(asyncio.to_thread(stock.ticker_description)),
-                asyncio.create_task(asyncio.to_thread(stock.ticker_outer_ratings)),
-                asyncio.create_task(asyncio.to_thread(stock.ticker_news)),
-                asyncio.create_task(asyncio.to_thread(stock.ticker_inside_trader)),
-                asyncio.create_task(asyncio.to_thread(stock.ticker_signal)),
-                asyncio.create_task(asyncio.to_thread(stock.ticker_full_info))
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_fundament())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_description())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_outer_ratings())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_news())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_inside_trader())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_signal())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_full_info()))
             ]
             return await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -199,6 +221,7 @@ async def get_stock_info(ticker: str):
         if not any([fundamentals, description, ratings, news, insider, signal_dict, full_info]):
             return {"error": "No data available for ticker"}
             
+        # Make sure we're returning a StockResponse object, not a coroutine
         return StockResponse(
             fundamentals=fundamentals,
             description=description,
@@ -291,6 +314,7 @@ async def get_news():
     """Get latest financial news and blog posts"""
     try:
         fnews = News()
+        # Make sure we're not returning a coroutine
         all_news = fnews.get_news()
         return {
             "news": all_news['news'].to_dict('records'),
@@ -316,17 +340,17 @@ async def get_futures():
     """Get futures market performance"""
     try:
         future = Future()
+        # Make sure we're not returning a coroutine
         return future.performance().to_dict('records')
     except Exception as e:
         return {"error": str(e)}
 
 @app.get("/calendar")
-@cached(cache=calendar_cache)
+@async_cached(cache=calendar_cache)
 async def get_calendar():
     """Get economic calendar events with detailed information"""
     try:
         calendar = CustomCalendar()
-        # Make sure to await the async function call
         calendar_data = await calendar.calendar()
         
         if calendar_data.empty:
@@ -350,11 +374,12 @@ async def get_calendar():
         return {"error": str(e)}
 
 @app.post("/calendar/filter")
+@async_cached(cache=calendar_cache)
 async def filter_calendar(filters: CalendarFilter):
     """Filter economic calendar events by date, impact level, or release name"""
     try:
         calendar = CustomCalendar()
-        calendar_data = calendar.calendar()
+        calendar_data = await calendar.calendar()
         
         # Check if the calendar data is empty
         if calendar_data.empty:
@@ -387,11 +412,12 @@ async def filter_calendar(filters: CalendarFilter):
         return {"error": str(e)}
 
 @app.get("/calendar/summary")
+@async_cached(cache=calendar_cache)
 async def get_calendar_summary():
     """Get a summary of economic calendar events grouped by impact level"""
     try:
         calendar = CustomCalendar()
-        calendar_data = calendar.calendar()
+        calendar_data = await calendar.calendar()
         
         # Check if the calendar data is empty
         if calendar_data.empty:
