@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-import requests
+import aiohttp
 from bs4 import BeautifulSoup
 import datetime
 
@@ -20,7 +20,7 @@ class CustomCalendar:
             'Cookie': 'customTable=0; screenerView=1; activeTab=1'
         }
     
-    def calendar(self):
+    async def calendar(self):
         """Get economic calendar table.
         
         Returns:
@@ -28,11 +28,14 @@ class CustomCalendar:
         """
         try:
             # Make the request with headers to avoid being blocked
-            response = requests.get(self.url, headers=self.headers, timeout=10)
-            response.raise_for_status()  # Raise an exception for HTTP errors
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.url, headers=self.headers, timeout=10) as response:
+                    if response.status != 200:
+                        response.raise_for_status()
+                    html = await response.text()
             
             # Parse the HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(html, 'html.parser')
             
             # Find all calendar tables
             tables = soup.find_all("table", class_="calendar_table")
@@ -120,26 +123,31 @@ class CustomCalendar:
 
 # Test the custom calendar implementation
 if __name__ == "__main__":
-    calendar = CustomCalendar()
-    calendar_data = calendar.calendar()
+    import asyncio
     
-    print("\nCalendar data type:", type(calendar_data))
-    print("DataFrame shape:", calendar_data.shape)
-    print("DataFrame columns:", calendar_data.columns.tolist())
-    
-    if not calendar_data.empty:
-        print("\nFirst few rows:")
-        print(calendar_data.head())
+    async def main():
+        calendar = CustomCalendar()
+        calendar_data = await calendar.calendar()
         
-        # Print unique dates
-        if "Date" in calendar_data.columns:
-            print("\nUnique dates:", calendar_data["Date"].unique())
+        print("\nCalendar data type:", type(calendar_data))
+        print("DataFrame shape:", calendar_data.shape)
+        print("DataFrame columns:", calendar_data.columns.tolist())
+        
+        if not calendar_data.empty:
+            print("\nFirst few rows:")
+            print(calendar_data.head())
             
-        # Print sample of events for each date
-        for date in calendar_data["Date"].unique():
-            if date:
-                print(f"\nEvents for {date}:")
-                date_events = calendar_data[calendar_data["Date"] == date].head(3)
-                print(date_events[["Time", "Release", "Impact", "For", "Actual", "Expected", "Prior"]])
-    else:
-        print("\nDataFrame is empty") 
+            # Print unique dates
+            if "Date" in calendar_data.columns:
+                print("\nUnique dates:", calendar_data["Date"].unique())
+                
+            # Print sample of events for each date
+            for date in calendar_data["Date"].unique():
+                if date:
+                    print(f"\nEvents for {date}:")
+                    date_events = calendar_data[calendar_data["Date"] == date].head(3)
+                    print(date_events[["Time", "Release", "Impact", "For", "Actual", "Expected", "Prior"]])
+        else:
+            print("\nDataFrame is empty")
+    
+    asyncio.run(main()) 
