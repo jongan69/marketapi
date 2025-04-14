@@ -611,6 +611,14 @@ async def get_latest_fomc_meeting():
                 latest_meeting = meeting.copy()
                 # Convert Timestamp to string
                 latest_meeting['Date'] = latest_meeting['Date'].strftime('%Y-%m-%d')
+                # Fetch minutes text if minutes link exists
+                if latest_meeting['Minutes_Link']:
+                    latest_meeting['Minutes_Text'] = await calendar._fetch_minutes_text(latest_meeting['Minutes_Link'])
+                    if latest_meeting['Minutes_Text']:
+                        latest_meeting['Minutes_Summary'] = await calendar.get_minutes_summary(
+                            latest_meeting['Minutes_Link'], 
+                            latest_meeting['Minutes_Text']
+                        )
                 break
         
         # Get the next meeting
