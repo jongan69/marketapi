@@ -2,10 +2,9 @@ import aiohttp
 import pandas as pd
 from bs4 import BeautifulSoup
 import re
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Tuple
 from urllib.parse import urljoin
-import os
-# from fomc_summarizer import FOMCSummarizer
+from fomc_summarizer import FOMCSummarizer
 
 class FOMCCalendar:
     """Class to scrape FOMC meeting data from the Federal Reserve website"""
@@ -38,9 +37,7 @@ class FOMCCalendar:
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
         }
-        self.summarizer = None
-        # if openai_api_key or os.environ.get("OPENAI_API_KEY"):
-            # self.summarizer = FOMCSummarizer(openai_api_key)
+        self.summarizer = FOMCSummarizer(openai_api_key)
     
     def _extract_year_from_text(self, text: str) -> Optional[int]:
         """Extract year from text, handling various formats."""
@@ -169,8 +166,8 @@ class FOMCCalendar:
             if not minutes_text:
                 return None
                 
-            # Create a new summary using the summarizer
-            summary = await self.summarizer.summarize_text(minutes_text)
+            # Create a new summary using the summarizer without chunking
+            summary = await self.summarizer.summarize_text(minutes_text, use_chunking=False)
             return summary
             
         except Exception as e:

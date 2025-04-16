@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Query, Request, HTTPException, Path
+from fastapi import FastAPI, Query, HTTPException, Path
 from typing import Optional, Dict, List, Any
 import uvicorn
 from finvizfinance.quote import finvizfinance
@@ -10,22 +10,19 @@ from finvizfinance.news import News
 from finvizfinance.insider import Insider
 from finvizfinance.future import Future
 from custom_calendar import CustomCalendar
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import pandas as pd
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import time
 import asyncio
-from cachetools import TTLCache, cached
+from cachetools import TTLCache
 from functools import wraps
 from api_config import custom_openapi, setup_middleware, RATE_LIMIT_REQUESTS
 from rate_limiter import RateLimiter
 from datetime import datetime
 from fomc_calendar import FOMCCalendar
-import aiohttp
-from bs4 import BeautifulSoup
-import re
 
 # Initialize caches with TTL (Time To Live)
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
