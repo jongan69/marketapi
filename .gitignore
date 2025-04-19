@@ -21,12 +21,14 @@ wheels/
 *.egg
 
 # Virtual Environment
-venv/
-env/
-ENV/
+bin/
+include/
+pyvenv.cfg
 .env
 .venv
-marketapi/
+env/
+venv/
+ENV/
 
 # IDE
 .idea/
@@ -46,3 +48,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+log/
+
+# Project specific
+har_and_cookies/blackbox.json
