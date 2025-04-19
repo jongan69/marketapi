@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import time
 import asyncio
+<<<<<<< HEAD
 import traceback
 from cachetools import TTLCache
 from functools import wraps
@@ -26,6 +27,10 @@ from datetime import datetime
 from fomc_calendar import FOMCCalendar
 from logger import LoggingMiddleware, log_endpoint_access, log_error, log_performance
 from tools.combined_metrics import analyze_stock
+=======
+from cachetools import TTLCache, cached
+from functools import wraps
+>>>>>>> 2cbddfa (damn calendar)
 
 # Initialize caches with TTL (Time To Live)
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
@@ -58,6 +63,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+<<<<<<< HEAD
 # Response Models
 class StockResponse(BaseModel):
     """Response model for stock information"""
@@ -78,6 +84,48 @@ class AnalystMetricsResponse(BaseModel):
     earnings_estimates: Dict[str, Any]
     revenue_estimates: Dict[str, Any]
     eps_estimates: Dict[str, Any]
+=======
+# Rate limiting middleware
+class RateLimiter:
+    def __init__(self, requests_per_minute=60):
+        self.requests_per_minute = requests_per_minute
+        self.requests = {}
+
+    async def __call__(self, request: Request, call_next):
+        client_ip = request.client.host
+        now = time.time()
+        
+        # Clean old requests
+        self.requests = {ip: reqs for ip, reqs in self.requests.items() 
+                        if now - reqs[-1] < 60}
+        
+        # Check rate limit
+        if client_ip in self.requests:
+            if len(self.requests[client_ip]) >= self.requests_per_minute:
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": "Too many requests. Please try again later."}
+                )
+            self.requests[client_ip].append(now)
+        else:
+            self.requests[client_ip] = [now]
+        
+        # Make sure we're not returning a coroutine
+        response = await call_next(request)
+        return response
+
+app.middleware("http")(RateLimiter())
+
+class StockResponse(BaseModel):
+    """Response model for stock information"""
+    fundamentals: Dict = {}
+    description: str = ""
+    ratings: List[Dict] = []
+    news: List[Dict] = []
+    insider_trading: List[Dict] = []
+    signal: Dict = {}
+    full_info: Dict = {}
+>>>>>>> 2cbddfa (damn calendar)
 
 class ScreenerFilters(BaseModel):
     """Filters for stock screener"""
@@ -92,6 +140,7 @@ class CalendarFilter(BaseModel):
     impact: Optional[str] = None
     release: Optional[str] = None
 
+<<<<<<< HEAD
 class CalendarEvent(BaseModel):
     Date: str
     Time: str
@@ -150,6 +199,8 @@ class CombinedMetricsResponse(BaseModel):
 # Add this near the start of your file, after the imports
 start_time = time.time()
 
+=======
+>>>>>>> 2cbddfa (damn calendar)
 def async_cached(cache):
     """Decorator for caching async function results"""
     def decorator(func):
@@ -198,7 +249,23 @@ async def get_stock_info(
                 raise HTTPException(status_code=500, detail=f"Error gathering data: {str(e)}")
         
         # Gather all data concurrently
+<<<<<<< HEAD
         fundamentals, description, ratings, news, insider, signal, full_info = await gather_data()
+=======
+        async def gather_data():
+            """Gather all stock data concurrently"""
+            # Use asyncio.to_thread to run synchronous functions in a thread pool
+            tasks = [
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_fundament())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_description())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_outer_ratings())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_news())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_inside_trader())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_signal())),
+                asyncio.create_task(asyncio.to_thread(lambda: stock.ticker_full_info()))
+            ]
+            return await asyncio.gather(*tasks, return_exceptions=True)
+>>>>>>> 2cbddfa (damn calendar)
         
         # Log performance
         duration = time.time() - start_time
@@ -220,6 +287,65 @@ async def get_stock_info(
                 return {"description": data}
             return [] if field_type == "list" else {}
         
+<<<<<<< HEAD
+=======
+        # Process signal data
+        signal_dict = {}
+        if signal and isinstance(signal, list) and len(signal) > 0 and any(signal):
+            signal_dict = {
+                'Technical': signal[0] if len(signal) > 0 else {},
+                'Pivot': signal[1] if len(signal) > 1 else {},
+                'Oscillator': signal[2] if len(signal) > 2 else {}
+            }
+        elif isinstance(fundamentals, dict):
+            signal_dict = {
+                'Technical': {
+                    'RSI': fundamentals.get('RSI (14)', 'N/A'),
+                    'MACD': fundamentals.get('MACD', 'N/A'),
+                    'MA50': fundamentals.get('SMA50', 'N/A'),
+                    'MA200': fundamentals.get('SMA200', 'N/A')
+                },
+                'Pivot': {
+                    'Pivot': fundamentals.get('Pivot', 'N/A'),
+                    'Support1': fundamentals.get('S1', 'N/A'),
+                    'Support2': fundamentals.get('S2', 'N/A'),
+                    'Resistance1': fundamentals.get('R1', 'N/A'),
+                    'Resistance2': fundamentals.get('R2', 'N/A')
+                },
+                'Oscillator': {
+                    'StochRSI': fundamentals.get('StochRSI', 'N/A'),
+                    'StochRSI_K': fundamentals.get('StochRSI_K', 'N/A'),
+                    'StochRSI_D': fundamentals.get('StochRSI_D', 'N/A')
+                }
+            }
+        
+        # Process full info
+        if not full_info and isinstance(fundamentals, dict):
+            full_info = {
+                'Company': fundamentals.get('Company', 'N/A'),
+                'Sector': fundamentals.get('Sector', 'N/A'),
+                'Industry': fundamentals.get('Industry', 'N/A'),
+                'Country': fundamentals.get('Country', 'N/A'),
+                'Market Cap': fundamentals.get('Market Cap', 'N/A'),
+                'P/E': fundamentals.get('P/E', 'N/A'),
+                'EPS': fundamentals.get('EPS (ttm)', 'N/A'),
+                'Dividend': fundamentals.get('Dividend TTM', 'N/A'),
+                'Beta': fundamentals.get('Beta', 'N/A'),
+                'RSI': fundamentals.get('RSI (14)', 'N/A'),
+                'MACD': fundamentals.get('MACD', 'N/A'),
+                'MA50': fundamentals.get('SMA50', 'N/A'),
+                'MA200': fundamentals.get('SMA200', 'N/A'),
+                'Volume': fundamentals.get('Volume', 'N/A'),
+                'Avg Volume': fundamentals.get('Avg Volume', 'N/A'),
+                'Price': fundamentals.get('Price', 'N/A'),
+                'Change': fundamentals.get('Change', 'N/A')
+            }
+        
+        if not any([fundamentals, description, ratings, news, insider, signal_dict, full_info]):
+            return {"error": "No data available for ticker"}
+            
+        # Make sure we're returning a StockResponse object, not a coroutine
+>>>>>>> 2cbddfa (damn calendar)
         return StockResponse(
             fundamentals=safe_df_to_dict(fundamentals, "dict"),
             description=description if isinstance(description, str) else "",
@@ -626,6 +752,7 @@ async def get_news():
     """Get latest financial news and blog posts"""
     try:
         fnews = News()
+        # Make sure we're not returning a coroutine
         all_news = fnews.get_news()
         return {
             "news": all_news['news'].to_dict('records'),
@@ -719,11 +846,17 @@ async def get_futures():
     """Get futures market performance"""
     try:
         future = Future()
+        # Make sure we're not returning a coroutine
         return future.performance().to_dict('records')
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+<<<<<<< HEAD
 @app.get("/calendar", response_model=CalendarResponse, tags=["Calendar"])
+=======
+@app.get("/calendar")
+@async_cached(cache=calendar_cache)
+>>>>>>> 2cbddfa (damn calendar)
 async def get_calendar():
     """
     Get the economic calendar data.
@@ -732,7 +865,11 @@ async def get_calendar():
     """
     try:
         calendar = CustomCalendar()
+<<<<<<< HEAD
         df = await calendar.calendar()
+=======
+        calendar_data = await calendar.calendar()
+>>>>>>> 2cbddfa (damn calendar)
         
         if df.empty:
             return JSONResponse(
@@ -751,6 +888,7 @@ async def get_calendar():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+<<<<<<< HEAD
 @app.post("/calendar/filter", response_model=CalendarResponse, tags=["Calendar"])
 async def filter_calendar(filter: CalendarFilter):
     """
@@ -764,6 +902,15 @@ async def filter_calendar(filter: CalendarFilter):
     try:
         calendar = CustomCalendar()
         df = await calendar.calendar()
+=======
+@app.post("/calendar/filter")
+@async_cached(cache=calendar_cache)
+async def filter_calendar(filters: CalendarFilter):
+    """Filter economic calendar events by date, impact level, or release name"""
+    try:
+        calendar = CustomCalendar()
+        calendar_data = await calendar.calendar()
+>>>>>>> 2cbddfa (damn calendar)
         
         if df.empty:
             return JSONResponse(
@@ -790,7 +937,12 @@ async def filter_calendar(filter: CalendarFilter):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+<<<<<<< HEAD
 @app.get("/calendar/summary", response_model=CalendarSummary, tags=["Calendar"])
+=======
+@app.get("/calendar/summary")
+@async_cached(cache=calendar_cache)
+>>>>>>> 2cbddfa (damn calendar)
 async def get_calendar_summary():
     """
     Get a summary of economic calendar events grouped by impact level.
@@ -803,7 +955,11 @@ async def get_calendar_summary():
     """
     try:
         calendar = CustomCalendar()
+<<<<<<< HEAD
         df = await calendar.calendar()
+=======
+        calendar_data = await calendar.calendar()
+>>>>>>> 2cbddfa (damn calendar)
         
         if df.empty:
             return JSONResponse(
