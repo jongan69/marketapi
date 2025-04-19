@@ -17,12 +17,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import time
 import asyncio
+import traceback
 from cachetools import TTLCache
 from functools import wraps
 from api_config import custom_openapi, setup_middleware, RATE_LIMIT_REQUESTS
 from rate_limiter import RateLimiter
 from datetime import datetime
 from fomc_calendar import FOMCCalendar
+from logger import LoggingMiddleware, log_endpoint_access, log_error, log_performance
+from tools.combined_metrics import analyze_stock
 
 # Initialize caches with TTL (Time To Live)
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
@@ -38,6 +41,7 @@ app = FastAPI(
 # Setup middleware
 setup_middleware(app)
 app.add_middleware(RateLimiter, requests_per_minute=RATE_LIMIT_REQUESTS)
+app.add_middleware(LoggingMiddleware)  # Add logging middleware
 
 # Custom OpenAPI schema
 app.openapi = lambda: custom_openapi(app)
@@ -64,6 +68,16 @@ class StockResponse(BaseModel):
     insider_trading: List[Dict[str, Any]]
     signal: List[str]
     full_info: Dict[str, Any]
+
+class AnalystMetricsResponse(BaseModel):
+    """Response model for analyst metrics"""
+    symbol: str
+    analyst_ratings: List[Dict[str, Any]]
+    price_targets: Dict[str, Any]
+    recommendation_summary: Dict[str, Any]
+    earnings_estimates: Dict[str, Any]
+    revenue_estimates: Dict[str, Any]
+    eps_estimates: Dict[str, Any]
 
 class ScreenerFilters(BaseModel):
     """Filters for stock screener"""
@@ -125,6 +139,14 @@ class FOMCLatestResponse(BaseModel):
     status: str
     error: Optional[str] = None
 
+class CombinedMetricsResponse(BaseModel):
+    """Response model for combined metrics analysis"""
+    symbol: str
+    analysis: Dict[str, Any]
+    combined_score: float
+    analyst_scores: Dict[str, float]
+    details: Dict[str, Any]
+
 # Add this near the start of your file, after the imports
 start_time = time.time()
 
@@ -144,6 +166,7 @@ def async_cached(cache):
 
 @app.get("/")
 async def root():
+    log_endpoint_access("/")
     return {"message": "Welcome to Market Data API"}
 
 @app.get("/stock/{symbol}", response_model=StockResponse, tags=["Stocks"])
@@ -151,13 +174,9 @@ async def get_stock_info(
     symbol: str = Path(..., description="Stock symbol (e.g., AAPL, MSFT)"),
     screener: Optional[str] = Query(None, description="Screener to use (e.g., 'overview', 'all')")
 ):
-    """
-    Get comprehensive stock information including fundamentals, description, ratings, news, and more.
+    start_time = time.time()
+    log_endpoint_access("/stock/{symbol}", symbol=symbol, screener=screener)
     
-    Parameters:
-    - symbol: Stock symbol (e.g., AAPL, MSFT)
-    - screener: Optional screener to use (e.g., 'overview', 'all')
-    """
     try:
         # Initialize stock object
         stock = finvizfinance(symbol)
@@ -175,10 +194,15 @@ async def get_stock_info(
                 ]
                 return await asyncio.gather(*tasks, return_exceptions=True)
             except Exception as e:
+                log_error(e, {"symbol": symbol, "operation": "gather_data"})
                 raise HTTPException(status_code=500, detail=f"Error gathering data: {str(e)}")
         
         # Gather all data concurrently
         fundamentals, description, ratings, news, insider, signal, full_info = await gather_data()
+        
+        # Log performance
+        duration = time.time() - start_time
+        log_performance("get_stock_info", duration, symbol=symbol)
         
         # Convert DataFrames to dictionaries
         def safe_df_to_dict(data, field_type="list"):
@@ -206,7 +230,321 @@ async def get_stock_info(
             full_info=safe_df_to_dict(full_info, "dict")
         )
     except Exception as e:
+        log_error(e, {"symbol": symbol, "screener": screener})
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/stock/{symbol}/combined_metrics", response_model=CombinedMetricsResponse, tags=["Stocks"])
+async def get_combined_metrics(
+    symbol: str = Path(..., description="Stock symbol (e.g., AAPL, MSFT)")
+):
+    """Get combined metrics analysis for a stock"""
+    try:
+        # Get the analysis from the combined_metrics module
+        analysis_result = analyze_stock(symbol)
+        
+        if not analysis_result:
+            raise HTTPException(status_code=404, detail=f"No data available for {symbol}")
+        
+        # Transform the data to match the expected response model
+        analyst_scores = {}
+        for analyst, data in analysis_result.items():
+            if analyst != 'ticker' and analyst != 'combined_score' and analyst != 'technical_analysis':
+                # Extract the score from the analyst's data
+                if isinstance(data, dict):
+                    # For analysts with multiple metrics, use the average score
+                    scores = []
+                    for metric, metric_data in data.items():
+                        if isinstance(metric_data, dict) and 'score' in metric_data:
+                            scores.append(metric_data['score'])
+                    if scores:
+                        analyst_scores[analyst] = sum(scores) / len(scores)
+                    else:
+                        analyst_scores[analyst] = 0.0
+                elif isinstance(data, tuple) and len(data) > 0:
+                    # For analysts that return a tuple with score as first element
+                    analyst_scores[analyst] = data[0]
+                else:
+                    analyst_scores[analyst] = 0.0
+        
+        # Create the response object
+        response = CombinedMetricsResponse(
+            symbol=symbol,
+            analysis=analysis_result,
+            combined_score=analysis_result.get('combined_score', 0.0),
+            analyst_scores=analyst_scores,
+            details={
+                "technical_analysis": analysis_result.get('technical_analysis', {}),
+                "summary": f"Analysis for {symbol} with combined score of {analysis_result.get('combined_score', 0.0):.2f}"
+            }
+        )
+        
+        return response
+    except Exception as e:
+        log_error(e, {"symbol": symbol})
+        raise HTTPException(status_code=500, detail=f"Error fetching combined metrics: {str(e)}")
+
+@app.get("/stock/{symbol}/analysts", response_model=AnalystMetricsResponse, tags=["Stocks"])
+@async_cached(stock_cache)
+async def get_analyst_metrics(
+    symbol: str = Path(..., description="Stock symbol (e.g., AAPL, MSFT)")
+):
+    """
+    Get comprehensive analyst metrics for a given stock including ratings, price targets, and earnings estimates.
+    
+    Parameters:
+    - symbol: Stock symbol (e.g., AAPL, MSFT)
+    """
+    try:
+        # Initialize stock object
+        stock = finvizfinance(symbol)
+        
+        # Define a safe wrapper for ticker_full_info to handle the IndexError
+        async def safe_ticker_full_info():
+            try:
+                print(f"\nDEBUG: Starting ticker_full_info for {symbol}")
+                
+                # Get the raw HTML content
+                print(f"DEBUG: Getting HTML content for {symbol}")
+                html_content = stock.soup.prettify()
+                print(f"DEBUG: HTML content length: {len(html_content)}")
+                print(f"DEBUG: First 500 chars of HTML: {html_content[:500]}")
+                
+                # Get all tables in the HTML
+                tables = stock.soup.find_all("table")
+                print(f"DEBUG: Found {len(tables)} tables in HTML")
+                
+                for i, table in enumerate(tables):
+                    headers = [th.text.strip() for th in table.find_all('th')]
+                    print(f"DEBUG: Table {i} headers: {headers}")
+                    
+                    # Print first row of data for each table
+                    rows = table.find_all('tr')
+                    if len(rows) > 1:  # If there's at least one data row
+                        first_row = rows[1]  # Skip header row
+                        cells = [td.text.strip() for td in first_row.find_all('td')]
+                        print(f"DEBUG: Table {i} first row data: {cells}")
+                
+                print("DEBUG: About to call ticker_full_info")
+                
+                # Monkey patch the number_covert function to handle empty strings
+                from finvizfinance.util import number_covert
+                def safe_number_covert(num):
+                    if not num or not isinstance(num, str):
+                        return num
+                    return number_covert(num)
+                
+                # Replace the original function with our safe version
+                import finvizfinance.util
+                finvizfinance.util.number_covert = safe_number_covert
+                
+                result = await asyncio.to_thread(lambda: stock.ticker_full_info())
+                print(f"DEBUG: ticker_full_info completed for {symbol}")
+                print(f"DEBUG: Result type: {type(result)}")
+                if isinstance(result, pd.DataFrame):
+                    print(f"DEBUG: DataFrame shape: {result.shape}")
+                    print(f"DEBUG: DataFrame columns: {result.columns.tolist()}")
+                    print(f"DEBUG: DataFrame head: {result.head(1).to_dict('records') if not result.empty else 'Empty DataFrame'}")
+                return result
+            except IndexError as e:
+                print(f"IndexError in ticker_full_info for {symbol}: {e}")
+                print(f"DEBUG: IndexError traceback: {traceback.format_exc()}")
+                # Return an empty DataFrame instead of propagating the error
+                return pd.DataFrame()
+            except Exception as e:
+                print(f"Other error in ticker_full_info for {symbol}: {e}")
+                print(f"DEBUG: Exception type: {type(e)}")
+                print(f"DEBUG: Exception traceback: {traceback.format_exc()}")
+                return e
+        
+        # Get analyst ratings and full info concurrently
+        tasks = [
+            asyncio.to_thread(lambda: stock.ticker_outer_ratings()),
+            safe_ticker_full_info(),
+            asyncio.to_thread(lambda: stock.ticker_fundament())
+        ]
+        ratings, full_info, fundament = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        print(f"\nDEBUG: Data from finvizfinance for {symbol}:")
+        print(f"Ratings type: {type(ratings)}")
+        if isinstance(ratings, pd.DataFrame):
+            print(f"Ratings columns: {ratings.columns.tolist()}")
+            print(f"Ratings sample: {ratings.head(1).to_dict('records')}")
+        else:
+            print(f"Ratings data: {ratings}")
+            
+        print(f"\nFull info type: {type(full_info)}")
+        if isinstance(full_info, pd.DataFrame):
+            print(f"Full info columns: {full_info.columns.tolist()}")
+            print(f"Full info sample: {full_info.head(1).to_dict('records')}")
+        else:
+            print(f"Full info data: {full_info}")
+            
+        print(f"\nFundament type: {type(fundament)}")
+        if isinstance(fundament, dict):
+            print(f"Fundament keys: {fundament.keys()}")
+            print(f"Fundament sample: {dict(list(fundament.items())[:5])}")
+        else:
+            print(f"Fundament data: {fundament}")
+        
+        # Handle ratings
+        analyst_ratings = []
+        if isinstance(ratings, Exception):
+            print(f"Error fetching ratings: {ratings}")
+        elif isinstance(ratings, pd.DataFrame):
+            if not ratings.empty:
+                analyst_ratings = ratings.to_dict('records')
+        elif isinstance(ratings, list):
+            analyst_ratings = ratings
+        elif isinstance(ratings, dict):
+            analyst_ratings = [ratings]
+        
+        # Initialize empty dictionaries for metrics
+        price_targets = {
+            "avg_price_target": {"value": "N/A"},
+            "price_target_low": {"value": "N/A"},
+            "price_target_high": {"value": "N/A"}
+        }
+        recommendation_summary = {
+            "strong_buy": {"count": 0},
+            "buy": {"count": 0},
+            "hold": {"count": 0},
+            "sell": {"count": 0},
+            "strong_sell": {"count": 0}
+        }
+        earnings_estimates = {
+            "current_quarter": {"value": "N/A"},
+            "next_quarter": {"value": "N/A"},
+            "current_year": {"value": "N/A"},
+            "next_year": {"value": "N/A"}
+        }
+        revenue_estimates = {
+            "current_quarter": {"value": "N/A"},
+            "next_quarter": {"value": "N/A"},
+            "current_year": {"value": "N/A"},
+            "next_year": {"value": "N/A"}
+        }
+        eps_estimates = {
+            "current_quarter": {"value": "N/A"},
+            "next_quarter": {"value": "N/A"},
+            "current_year": {"value": "N/A"},
+            "next_year": {"value": "N/A"}
+        }
+        
+        # Helper function to safely convert data to dictionary
+        def safe_df_to_dict(data, field_type="list"):
+            if data is None or isinstance(data, Exception):
+                return [] if field_type == "list" else {}
+            if isinstance(data, dict):
+                return data
+            if isinstance(data, pd.DataFrame):
+                if data.empty:
+                    return [] if field_type == "list" else {}
+                try:
+                    return data.to_dict('records') if field_type == "list" else data.to_dict()
+                except Exception as e:
+                    print(f"Error converting DataFrame to dict: {e}")
+                    return [] if field_type == "list" else {}
+            if isinstance(data, list):
+                return data
+            if isinstance(data, str):
+                return {"description": data}
+            return [] if field_type == "list" else {}
+        
+        # Handle full info
+        info_dict = safe_df_to_dict(full_info, "dict")
+        
+        # Try to extract price targets from full_info
+        if info_dict:
+            # Check if info_dict is a nested dictionary (from DataFrame.to_dict())
+            if isinstance(info_dict, dict) and any(isinstance(v, dict) for v in info_dict.values()):
+                # Try to find the first non-empty value
+                for key, value in info_dict.items():
+                    if isinstance(value, dict) and "Target Price" in value:
+                        price_targets = {
+                            "avg_price_target": {"value": value.get("Target Price", "N/A")},
+                            "price_target_low": {"value": value.get("Price Target Low", "N/A")},
+                            "price_target_high": {"value": value.get("Price Target High", "N/A")}
+                        }
+                        break
+            else:
+                # Direct dictionary with keys
+                price_targets = {
+                    "avg_price_target": {"value": info_dict.get("Target Price", "N/A")},
+                    "price_target_low": {"value": info_dict.get("Price Target Low", "N/A")},
+                    "price_target_high": {"value": info_dict.get("Price Target High", "N/A")}
+                }
+        
+        # If price targets are still N/A, try to extract from fundamentals
+        if price_targets["avg_price_target"]["value"] == "N/A" and isinstance(fundament, dict):
+            # Check for price target in fundamentals
+            if "Target Price" in fundament:
+                price_targets["avg_price_target"]["value"] = fundament["Target Price"]
+            if "Price Target Low" in fundament:
+                price_targets["price_target_low"]["value"] = fundament["Price Target Low"]
+            if "Price Target High" in fundament:
+                price_targets["price_target_high"]["value"] = fundament["Price Target High"]
+        
+        print(f"\nExtracted price targets: {price_targets}")
+        
+        # Extract recommendation summary from analyst ratings
+        if analyst_ratings:
+            for rating in analyst_ratings:
+                rating_text = rating.get("Rating", "").lower()
+                if "strong buy" in rating_text or "outperform" in rating_text:
+                    recommendation_summary["strong_buy"]["count"] += 1
+                elif "buy" in rating_text:
+                    recommendation_summary["buy"]["count"] += 1
+                elif "hold" in rating_text or "neutral" in rating_text or "sector weight" in rating_text:
+                    recommendation_summary["hold"]["count"] += 1
+                elif "sell" in rating_text or "underperform" in rating_text:
+                    recommendation_summary["sell"]["count"] += 1
+                elif "strong sell" in rating_text:
+                    recommendation_summary["strong_sell"]["count"] += 1
+        print(f"\nExtracted recommendation summary: {recommendation_summary}")
+        
+        # Handle fundamentals for estimates
+        if isinstance(fundament, dict):
+            # Extract earnings estimates
+            earnings_estimates = {
+                "current_quarter": {"value": fundament.get("EPS next Q", "N/A")},
+                "next_quarter": {"value": fundament.get("EPS next Y", "N/A")},
+                "current_year": {"value": fundament.get("EPS this Y", "N/A")},
+                "next_year": {"value": fundament.get("EPS next Y", "N/A")}
+            }
+            print(f"\nExtracted earnings estimates: {earnings_estimates}")
+            
+            # Extract revenue estimates
+            revenue_estimates = {
+                "current_quarter": {"value": fundament.get("Sales Q/Q", "N/A")},
+                "next_quarter": {"value": fundament.get("Sales next Q", "N/A")},
+                "current_year": {"value": fundament.get("Sales this Y", "N/A")},
+                "next_year": {"value": fundament.get("Sales next Y", "N/A")}
+            }
+            print(f"\nExtracted revenue estimates: {revenue_estimates}")
+            
+            # Extract EPS estimates
+            eps_estimates = {
+                "current_quarter": {"value": fundament.get("EPS Q/Q", "N/A")},
+                "next_quarter": {"value": fundament.get("EPS next Q", "N/A")},
+                "current_year": {"value": fundament.get("EPS this Y", "N/A")},
+                "next_year": {"value": fundament.get("EPS next Y", "N/A")}
+            }
+            print(f"\nExtracted EPS estimates: {eps_estimates}")
+        
+        return AnalystMetricsResponse(
+            symbol=symbol,
+            analyst_ratings=analyst_ratings,
+            price_targets=price_targets,
+            recommendation_summary=recommendation_summary,
+            earnings_estimates=earnings_estimates,
+            revenue_estimates=revenue_estimates,
+            eps_estimates=eps_estimates
+        )
+    except Exception as e:
+        print(f"Error in get_analyst_metrics: {str(e)}")
+        print(f"Exception type: {type(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error fetching analyst metrics: {str(e)}")
 
 @app.post("/screener/overview", tags=["Screener"])
 async def get_screener_overview(filters: ScreenerFilters):
@@ -492,34 +830,31 @@ async def get_calendar_summary():
 
 @app.get("/health", tags=["System"], response_model=HealthCheck)
 async def health_check():
-    """
-    Health check endpoint for monitoring API status.
-    Returns the current status of the API and its services.
-    """
+    start_time = time.time()
+    log_endpoint_access("/health")
+    
     try:
-        # Check if we can access FinViz data
-        stock = finvizfinance("AAPL")
-        stock_status = "healthy"
-    except Exception as e:
-        stock_status = f"unhealthy: {str(e)}"
-
-    try:
-        # Check if we can access calendar data
-        calendar = CustomCalendar()
-        calendar_status = "healthy"
-    except Exception as e:
-        calendar_status = f"unhealthy: {str(e)}"
-
-    return HealthCheck(
-        status="healthy",
-        version="1.0.0",
-        timestamp=datetime.now().isoformat(),
-        uptime=time.time() - start_time,
-        services={
-            "stock_data": stock_status,
-            "calendar_data": calendar_status
+        uptime = time.time() - app.state.start_time
+        services_status = {
+            "finviz": "up" if finvizfinance("AAPL") is not None else "down",
+            "calendar": "up" if CustomCalendar() is not None else "down",
         }
-    )
+        
+        response = {
+            "status": "healthy",
+            "version": "1.0.0",
+            "timestamp": datetime.utcnow().isoformat(),
+            "uptime": uptime,
+            "services": services_status
+        }
+        
+        duration = time.time() - start_time
+        log_performance("health_check", duration)
+        
+        return response
+    except Exception as e:
+        log_error(e, {"endpoint": "/health"})
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fomc/calendar", tags=["FOMC"])
 async def get_fomc_calendar():
