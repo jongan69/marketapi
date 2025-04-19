@@ -292,7 +292,7 @@ def analyze_stock(ticker):
     # Extract market cap from latest metrics if available
     market_cap = latest_metrics.get('market_cap', 0)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    if market_cap is 0:
+    if market_cap == 0:
         market_cap = get_market_cap(ticker)
     print(f"DEBUG: Market cap for {ticker} on {today}: {market_cap}")
     
