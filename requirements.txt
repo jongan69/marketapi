@@ -12,6 +12,5 @@ g4f==0.5.1.2
 yfinance==0.2.10
 python-json-logger==3.3.0
 colorama==0.4.6
-transformers==4.51.3
 torch==2.6.0
 huggingface_hub[hf_xet]
