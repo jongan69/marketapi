@@ -1,383 +1,437 @@
-# Markets API
+# Market Data API
 
-![Markets API](https://img.shields.io/badge/API-Markets-blue)
-![Version](https://img.shields.io/badge/version-1.0.0-green)
-![License](https://img.shields.io/badge/license-MIT-yellow)
+A comprehensive API for accessing market data, economic calendar, and stock information.
 
-A comprehensive API for accessing market data, economic calendar, and stock information from FinViz.
+## Table of Contents
+- [Overview](#overview)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Authentication](#authentication)
+- [Base URL](#base-url)
+- [API Endpoints](#api-endpoints)
+  - [Stocks](#stocks)
+  - [Screener](#screener)
+  - [Calendar](#calendar)
+  - [FOMC](#fomc)
+  - [News](#news)
+  - [Insider Trading](#insider-trading)
+  - [Futures](#futures)
+  - [System](#system)
+- [Response Models](#response-models)
+- [Rate Limiting](#rate-limiting)
+- [Caching](#caching)
+- [Error Handling](#error-handling)
+- [Development](#development)
 
 ## Overview
 
-Markets API provides real-time and historical financial data through a simple REST API. Access stock information, economic calendar events, and market data with just a few API calls.
+The Market Data API provides access to various financial data sources including:
+- Stock information and fundamentals
+- Economic calendar events
+- FOMC meeting data and minutes
+- Financial news
+- Insider trading data
+- Futures market data
 
-## Features
+## Installation
 
-- **Stock Information**: Get comprehensive data about any publicly traded stock
-- **Economic Calendar**: Access upcoming economic events and their impact
-- **Market Data**: Retrieve market performance metrics and trends
-- **Insider Trading**: Monitor insider trading activities
-- **Financial News**: Stay updated with the latest financial news
+1. Clone the repository
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+3. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+4. Run the API:
+```bash
+python api.py
+```
 
-## Getting Started
+## Configuration
 
-### Authentication
+The API can be configured through environment variables:
 
-All API requests require an API key to be included in the header:
+```env
+# API Configuration
+PORT=8000
+HOST=0.0.0.0
+DEBUG=False
+
+# Rate Limiting
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=60
+
+# Cache Settings
+STOCK_CACHE_TTL=300
+SCREENER_CACHE_TTL=600
+CALENDAR_CACHE_TTL=1800
+
+# OpenAI API Key (for FOMC summaries)
+OPENAI_API_KEY=your_api_key_here
+```
+
+## Authentication
+
+The API uses RapidAPI for authentication. Include your API key in the request header:
 
 ```
 X-RapidAPI-Key: YOUR_API_KEY
 ```
 
-You can obtain an API key by subscribing to the Markets API on RapidAPI.
+## Base URL
 
-### Base URL
-
+The API is available at:
 ```
 https://markets-api.p.rapidapi.com
 ```
 
+For local development:
+```
+http://localhost:8000
+```
+
 ## API Endpoints
 
-### Stock Information
+### Stocks
 
-#### Get Stock Info
-
-```
-GET /stock/{ticker}
-```
-
-Get comprehensive information about a specific stock.
+#### GET /stock/{symbol}
+Get comprehensive stock information.
 
 **Parameters:**
-- `ticker` (path, required): Stock symbol (e.g., AAPL, MSFT)
+- `symbol` (path): Stock symbol (e.g., AAPL, MSFT)
+- `screener` (query, optional): Screener to use (e.g., 'overview', 'all')
 
 **Response:**
 ```json
 {
-  "fundamentals": { ... },
-  "description": { ... },
-  "ratings": { ... },
-  "news": { ... },
-  "insider_trading": { ... },
-  "signal": { ... },
-  "full_info": { ... }
+    "fundamentals": {},
+    "description": "string",
+    "ratings": [],
+    "news": [],
+    "insider_trading": [],
+    "signal": [],
+    "full_info": {}
 }
 ```
 
-### Economic Calendar
+#### GET /stock/{symbol}/analysts
+Get comprehensive analyst metrics for a given stock.
 
-#### Get Calendar
-
-```
-GET /calendar
-```
-
-Get economic calendar events with detailed information.
+**Parameters:**
+- `symbol` (path): Stock symbol (e.g., AAPL, MSFT)
 
 **Response:**
 ```json
 {
-  "events": [
-    {
-      "Date": "Mon Apr 07",
-      "Time": "14:00",
-      "Datetime": "2024-04-07T14:00:00",
-      "Release": "Consumer Credit",
-      "Impact": "2",
-      "For": "Feb",
-      "Actual": "14.2B",
-      "Expected": "15.0B",
-      "Prior": "19.5B"
+    "symbol": "string",
+    "analyst_ratings": [],
+    "price_targets": {
+        "avg_price_target": {},
+        "price_target_low": {},
+        "price_target_high": {}
     },
-    ...
-  ],
-  "total_events": 15,
-  "available_dates": ["Mon Apr 07", "Tue Apr 08", ...]
+    "recommendation_summary": {
+        "strong_buy": {},
+        "buy": {},
+        "hold": {},
+        "sell": {},
+        "strong_sell": {}
+    },
+    "earnings_estimates": {
+        "current_quarter": {},
+        "next_quarter": {},
+        "current_year": {},
+        "next_year": {}
+    },
+    "revenue_estimates": {
+        "current_quarter": {},
+        "next_quarter": {},
+        "current_year": {},
+        "next_year": {}
+    },
+    "eps_estimates": {
+        "current_quarter": {},
+        "next_quarter": {},
+        "current_year": {},
+        "next_year": {}
+    }
 }
 ```
 
-#### Filter Calendar
+### Screener
 
-```
-POST /calendar/filter
-```
-
-Filter economic calendar events by date, impact level, or release name.
-
-**Request Body:**
-```json
-{
-  "date": "Mon Apr 07",
-  "impact": "2",
-  "release": "CPI"
-}
-```
-
-**Response:**
-```json
-{
-  "events": [ ... ],
-  "total_events": 3,
-  "available_dates": ["Mon Apr 07"]
-}
-```
-
-#### Get Calendar Summary
-
-```
-GET /calendar/summary
-```
-
-Get a summary of economic calendar events grouped by impact level.
-
-**Response:**
-```json
-{
-  "overall_summary": {
-    "1": 5,
-    "2": 7,
-    "3": 3
-  },
-  "today_summary": {
-    "1": 2,
-    "2": 3,
-    "3": 1
-  },
-  "total_events": 15,
-  "today_events": 6
-}
-```
-
-### Stock Screener
-
-#### Get Screener Overview
-
-```
-POST /screener/overview
-```
-
+#### POST /screener/overview
 Get stock screener overview with specified filters.
 
 **Request Body:**
 ```json
 {
-  "Exchange": "NASDAQ",
-  "Sector": "Technology",
-  "Industry": "Software",
-  "Country": "USA"
+    "Exchange": "string",
+    "Sector": "string",
+    "Industry": "string",
+    "Country": "string"
 }
 ```
 
+#### POST /screener/valuation
+Get stock screener valuation metrics.
+
+**Request Body:**
+Same as overview screener.
+
+#### POST /screener/financial
+Get stock screener financial metrics.
+
+**Request Body:**
+Same as overview screener.
+
+### Calendar
+
+#### GET /calendar
+Get economic calendar data.
+
 **Response:**
 ```json
-[
-  {
-    "Ticker": "AAPL",
-    "Company": "Apple Inc.",
-    "Sector": "Technology",
-    "Industry": "Consumer Electronics",
-    "Country": "USA",
-    "Market Cap": "2.85T",
-    "P/E": "28.45",
-    "Price": "175.84",
-    "Change": "1.23%"
-  },
-  ...
-]
+{
+    "events": [
+        {
+            "Date": "string",
+            "Time": "string",
+            "Datetime": "string",
+            "Release": "string",
+            "Impact": "string",
+            "For": "string",
+            "Actual": "string",
+            "Expected": "string",
+            "Prior": "string"
+        }
+    ],
+    "total_events": 0,
+    "available_dates": []
+}
 ```
 
-#### Get Screener Valuation
-
-```
-POST /screener/valuation
-```
-
-Get stock screener valuation metrics with specified filters.
+#### POST /calendar/filter
+Filter economic calendar events.
 
 **Request Body:**
 ```json
 {
-  "Exchange": "NYSE",
-  "Sector": "Financial",
-  "Industry": "Banks",
-  "Country": "USA"
+    "date": "string",
+    "impact": "string",
+    "release": "string"
 }
 ```
 
+#### GET /calendar/summary
+Get summary of economic calendar events.
+
 **Response:**
-```json
-[
-  {
-    "Ticker": "JPM",
-    "Company": "JPMorgan Chase & Co.",
-    "Market Cap": "500.2B",
-    "P/E": "13.2",
-    "Fwd P/E": "12.8",
-    "PEG": "1.5",
-    "P/S": "3.2",
-    "P/B": "1.8",
-    "P/C": "12.5",
-    "P/Free Cash Flow": "15.3"
-  },
-  ...
-]
-```
-
-#### Get Screener Financial
-
-```
-POST /screener/financial
-```
-
-Get stock screener financial metrics with specified filters.
-
-**Request Body:**
 ```json
 {
-  "Exchange": "NASDAQ",
-  "Sector": "Healthcare",
-  "Industry": "Biotechnology",
-  "Country": "USA"
+    "overall_summary": {},
+    "today_summary": {},
+    "total_events": 0,
+    "today_events": 0
 }
 ```
 
+### FOMC
+
+#### GET /fomc/calendar
+Get FOMC meeting calendar data.
+
 **Response:**
 ```json
-[
-  {
-    "Ticker": "MRNA",
-    "Company": "Moderna Inc.",
-    "Market Cap": "35.2B",
-    "Dividend Yield": "0.00%",
-    "ROA": "15.2%",
-    "ROE": "25.8%",
-    "ROI": "18.5%",
-    "Curr R": "2.8",
-    "Quick R": "1.9",
-    "LTDebt/Eq": "0.12",
-    "Debt/Eq": "0.15",
-    "Gross M": "65.8%",
-    "Oper M": "35.2%",
-    "Profit M": "28.5%"
-  },
-  ...
-]
+{
+    "past_meetings": [],
+    "future_meetings": [],
+    "total_meetings": 0,
+    "years": []
+}
 ```
 
-### Financial News
+#### GET /fomc/latest
+Get detailed information about the latest and next FOMC meetings.
 
-#### Get News
-
+**Response:**
+```json
+{
+    "meeting": {
+        "Date": "string",
+        "Is_Projection": false,
+        "Has_Press_Conference": false,
+        "Statement_Link": "string",
+        "Minutes_Link": "string",
+        "Minutes_Text": "string",
+        "Minutes_Summary": "string"
+    },
+    "next_meeting": {},
+    "status": "string",
+    "error": "string"
+}
 ```
-GET /news
-```
 
+### News
+
+#### GET /news
 Get latest financial news and blog posts.
 
 **Response:**
 ```json
 {
-  "news": [
-    {
-      "Date": "2024-04-10",
-      "Time": "09:30",
-      "Title": "Fed Signals Potential Rate Cut in Coming Months",
-      "Link": "https://example.com/news/12345",
-      "Source": "Financial Times"
-    },
-    ...
-  ],
-  "blogs": [
-    {
-      "Date": "2024-04-10",
-      "Time": "08:15",
-      "Title": "Tech Stocks Rally as AI Boom Continues",
-      "Link": "https://example.com/blog/67890",
-      "Source": "Market Insights"
-    },
-    ...
-  ]
+    "news": [],
+    "blogs": []
 }
 ```
 
 ### Insider Trading
 
-#### Get Insider Trading
-
-```
-GET /insider
-```
-
+#### GET /insider
 Get insider trading information.
 
 **Parameters:**
-- `option` (query, optional): Type of insider trading data (default: "top owner trade")
-
-**Response:**
-```json
-[
-  {
-    "Date": "2024-04-09",
-    "Ticker": "TSLA",
-    "Owner": "Elon Musk",
-    "Relationship": "CEO",
-    "Transaction": "Buy",
-    "Shares": "10000",
-    "Value": "$1,750,000",
-    "Shares Total": "411,062,576",
-    "SEC Form 4": "https://www.sec.gov/Archives/edgar/data/..."
-  },
-  ...
-]
-```
+- `option` (query): Type of insider trading data to retrieve
+  - Options: 'latest', 'latest buys', 'latest sales', 'top week', 'top week buys', 'top week sales', 'top owner trade', 'top owner buys', 'top owner sales', or an insider ID number
 
 ### Futures
 
-#### Get Futures
-
-```
-GET /futures
-```
-
+#### GET /futures
 Get futures market performance.
+
+### System
+
+#### GET /health
+Health check endpoint for monitoring API status.
 
 **Response:**
 ```json
-[
-  {
-    "Ticker": "ES",
-    "Name": "E-mini S&P 500",
-    "Last": "5,234.50",
-    "Change": "+0.75%",
-    "Volume": "1,234,567",
-    "Open Interest": "2,345,678"
-  },
-  ...
-]
+{
+    "status": "string",
+    "version": "string",
+    "timestamp": "string",
+    "uptime": 0,
+    "services": {}
+}
 ```
 
-## Rate Limits
+## Response Models
 
-- Free tier: 100 requests per minute
-- Pro tier: 1,000 requests per minute
-- Enterprise tier: Custom limits
+### StockResponse
+```python
+class StockResponse(BaseModel):
+    fundamentals: Dict[str, Any]
+    description: str
+    ratings: List[Dict[str, Any]]
+    news: List[Dict[str, Any]]
+    insider_trading: List[Dict[str, Any]]
+    signal: List[str]
+    full_info: Dict[str, Any]
+```
+
+### AnalystMetricsResponse
+```python
+class AnalystMetricsResponse(BaseModel):
+    symbol: str
+    analyst_ratings: List[Dict[str, Any]]
+    price_targets: Dict[str, Any]
+    recommendation_summary: Dict[str, Any]
+    earnings_estimates: Dict[str, Any]
+    revenue_estimates: Dict[str, Any]
+    eps_estimates: Dict[str, Any]
+```
+
+### CalendarEvent
+```python
+class CalendarEvent(BaseModel):
+    Date: str
+    Time: str
+    Datetime: str
+    Release: str
+    Impact: str
+    For: str
+    Actual: Optional[str]
+    Expected: Optional[str]
+    Prior: Optional[str]
+```
+
+### FOMCMeeting
+```python
+class FOMCMeeting(BaseModel):
+    Date: str
+    Is_Projection: bool
+    Has_Press_Conference: bool
+    Statement_Link: Optional[str]
+    Minutes_Link: Optional[str]
+    Minutes_Text: Optional[str]
+    Minutes_Summary: Optional[str]
+```
+
+## Rate Limiting
+
+The API implements rate limiting to prevent abuse. By default, requests are limited to:
+- 100 requests per minute per IP address
+- Configurable through environment variables
+
+## Caching
+
+The API implements caching for improved performance:
+
+- Stock Data: 5 minutes TTL
+- Screener Data: 10 minutes TTL
+- Calendar Data: 30 minutes TTL
+
+Cache settings can be configured through environment variables.
 
 ## Error Handling
 
-The API uses standard HTTP response codes to indicate the success or failure of requests.
+The API uses standard HTTP status codes:
+- 200: Success
+- 400: Bad Request
+- 404: Not Found
+- 429: Too Many Requests
+- 500: Internal Server Error
 
-- `200 OK`: Request succeeded
-- `400 Bad Request`: Invalid request parameters
-- `401 Unauthorized`: Missing or invalid API key
-- `403 Forbidden`: Insufficient permissions
-- `404 Not Found`: Resource not found
-- `429 Too Many Requests`: Rate limit exceeded
-- `500 Internal Server Error`: Server error
+Error responses include a detail message:
+```json
+{
+    "detail": "Error message description"
+}
+```
 
-## Support
+## Development
 
-For support, please contact us at support@marketsapi.com or visit our [documentation](https://marketsapi.com/docs).
+### Prerequisites
+- Python 3.8+
+- pip
+- virtualenv (recommended)
 
-## License
+### Setup Development Environment
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-This API is licensed under the MIT License. See the LICENSE file for details.
+# Install development dependencies
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest
+
+# Run linting
+flake8
+```
+
+### Running in Development Mode
+```bash
+# Enable auto-reload
+uvicorn api:app --reload --port 8000
+```
+
+### API Documentation
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- OpenAPI Schema: http://localhost:8000/openapi.json

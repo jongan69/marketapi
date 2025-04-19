@@ -1,0 +1,531 @@
+INFO:     Will watch for changes in these directories: ['/Users/jonathangan/Desktop/marketapi']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [36773] using StatReload
+INFO:     Started server process [36784]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+{"timestamp": "2025-04-19T03:22:59.750580", "level": "INFO", "name": "market_api", "module": "logger", "function": "dispatch", "line": 48, "message": "Request started", "request_id": null, "method": "GET", "url": "http://localhost:8001/stock/GME/analysts", "client_ip": "127.0.0.1", "user_agent": "curl/8.7.1"}
+
+DEBUG: Starting ticker_full_info for GME
+DEBUG: Getting HTML content for GME
+DEBUG: HTML content length: 346505
+DEBUG: First 500 chars of HTML: <!DOCTYPE html>
+<html class="dark" lang="en">
+ <head>
+  <title>
+   GME - Gamestop Corporation Stock Price and Quote
+  </title>
+  <meta charset="utf-8"/>
+  <meta content="width=1024" name="viewport"/>
+  <meta content="GME - Gamestop Corporation - Stock screener for investors and traders, financial visualizations." name="description"/>
+  <link as="font" crossorigin="" href="/fonts/lato-v17-latin-ext_latin-regular.woff2" rel="preload"/>
+  <link as="font" crossorigin="" href="/fonts/lato-v17-latin-e
+DEBUG: Found 17 tables in HTML
+DEBUG: Table 0 headers: []
+DEBUG: Table 0 first row data: ['', '', '', '', '']
+DEBUG: Table 1 headers: []
+DEBUG: Table 1 first row data: ['']
+DEBUG: Table 2 headers: []
+DEBUG: Table 2 first row data: ['']
+DEBUG: Table 3 headers: []
+DEBUG: Table 3 first row data: ['Home', 'News', 'Screener', 'Maps', 'Groups', 'Portfolio', 'Insider', 'Futures', 'Forex', 'Crypto', 'Backtests', 'Elite', '', 'Theme', 'Help', 'Login', 'Register']
+DEBUG: Table 4 headers: []
+DEBUG: Table 5 headers: []
+DEBUG: Table 5 first row data: ['Percentage change\r\n                        2.02', '%']
+DEBUG: Table 6 headers: ['Date', 'Action', 'Analyst', 'Rating Change', 'Price Target Change', 'Insider Trading', 'Relationship', 'Date', 'Transaction', 'Cost', '#Shares', 'Value ($)', '#Shares Total', 'SEC Form 4']
+DEBUG: Table 6 first row data: ['Peers: BBY ASO DKS ODP WSM ULTA BGFV TSCO ETSY AEO\n\xa0|\xa0Held by: IJH VTI VB VBR VXF MDY SPMD IWR IJJ IJK\nScroll to Statements\n\n\n\n\n\n\n\n\n\nIndex-\nP/E100.83\nEPS (ttm)0.27\nInsider Own8.60%\nShs Outstand447.00M\nPerf Week7.03%\n\n\nMarket Cap11.97B\nForward P/E56.98\nEPS next Y0.47\nInsider Trans1.33%\nShs Float408.62M\nPerf Month12.95%\n\n\nIncome131.20M\nPEG8.06\nEPS next Q0.08\nInst Own32.44%\nShort Float11.64%\nPerf Quarter-3.39%\n\n\nSales3.82B\nP/S3.13\nEPS this Y42.42%\nInst Trans14.22%\nShort Ratio4.93\nPerf Half Y25.91%\n\n\nBook/sh11.03\nP/B2.43\nEPS next Y0.00%\nROA2.98%\nShort Interest47.56M\nPerf Year158.24%\n\n\nCash/sh10.69\nP/C2.51\nEPS next 5Y12.51%\nROE4.19%\n52W Range10.01 - 64.83\nPerf YTD-14.55%\n\n\nDividend Est.-\nP/FCF92.38\nEPS past 5Y-\nROI2.53%\n52W High-58.69%\nBeta-0.64\n\n\nDividend TTM-\nQuick Ratio7.33\nSales past 5Y-8.62%\nGross Margin29.14%\n52W Low167.53%\nATR (14)1.61\n\n\nDividend Ex-DateMar 14, 2019\nCurrent Ratio8.05\nEPS Y/Y TTM1150.23%\nOper. Margin-0.60%\nRSI (14)58.10\nVolatility4.19% 7.02%\n\n\nEmployees6000\nDebt/Eq0.08\nSales Y/Y TTM-27.50%\nProfit Margin3.43%\nRecom4.50\nTarget Price13.50\n\n\nOption/ShortYes / Yes\nLT Debt/Eq0.05\nEPS Q/Q42.10%\nPayout0.00%\nRel Volume0.76\nPrev Close26.25\n\n\nSales Surprise-13.19%\nEPS Surprise275.00%\nSales Q/Q-28.49%\nEarningsMar 25 AMC\nAvg Volume9.65M\nPrice26.78\n\n\nSMA209.00%\nSMA508.69%\nSMA2007.68%\nTrades\n\n\nVolume7,326,480\nChange2.02%', 'Peers: BBY ASO DKS ODP WSM ULTA BGFV TSCO ETSY AEO\n\xa0|\xa0Held by: IJH VTI VB VBR VXF MDY SPMD IWR IJJ IJK\nScroll to Statements', 'Index', '-', 'P/E', '100.83', 'EPS (ttm)', '0.27', 'Insider Own', '8.60%', 'Shs Outstand', '447.00M', 'Perf Week', '7.03%', 'Market Cap', '11.97B', 'Forward P/E', '56.98', 'EPS next Y', '0.47', 'Insider Trans', '1.33%', 'Shs Float', '408.62M', 'Perf Month', '12.95%', 'Income', '131.20M', 'PEG', '8.06', 'EPS next Q', '0.08', 'Inst Own', '32.44%', 'Short Float', '11.64%', 'Perf Quarter', '-3.39%', 'Sales', '3.82B', 'P/S', '3.13', 'EPS this Y', '42.42%', 'Inst Trans', '14.22%', 'Short Ratio', '4.93', 'Perf Half Y', '25.91%', 'Book/sh', '11.03', 'P/B', '2.43', 'EPS next Y', '0.00%', 'ROA', '2.98%', 'Short Interest', '47.56M', 'Perf Year', '158.24%', 'Cash/sh', '10.69', 'P/C', '2.51', 'EPS next 5Y', '12.51%', 'ROE', '4.19%', '52W Range', '10.01 - 64.83', 'Perf YTD', '-14.55%', 'Dividend Est.', '-', 'P/FCF', '92.38', 'EPS past 5Y', '-', 'ROI', '2.53%', '52W High', '-58.69%', 'Beta', '-0.64', 'Dividend TTM', '-', 'Quick Ratio', '7.33', 'Sales past 5Y', '-8.62%', 'Gross Margin', '29.14%', '52W Low', '167.53%', 'ATR (14)', '1.61', 'Dividend Ex-Date', 'Mar 14, 2019', 'Current Ratio', '8.05', 'EPS Y/Y TTM', '1150.23%', 'Oper. Margin', '-0.60%', 'RSI (14)', '58.10', 'Volatility', '4.19% 7.02%', 'Employees', '6000', 'Debt/Eq', '0.08', 'Sales Y/Y TTM', '-27.50%', 'Profit Margin', '3.43%', 'Recom', '4.50', 'Target Price', '13.50', 'Option/Short', 'Yes / Yes', 'LT Debt/Eq', '0.05', 'EPS Q/Q', '42.10%', 'Payout', '0.00%', 'Rel Volume', '0.76', 'Prev Close', '26.25', 'Sales Surprise', '-13.19%', 'EPS Surprise', '275.00%', 'Sales Q/Q', '-28.49%', 'Earnings', 'Mar 25 AMC', 'Avg Volume', '9.65M', 'Price', '26.78', 'SMA20', '9.00%', 'SMA50', '8.69%', 'SMA200', '7.68%', 'Trades', '', 'Volume', '7,326,480', 'Change', '2.02%']
+DEBUG: Table 7 headers: []
+DEBUG: Table 7 first row data: ['Peers: BBY ASO DKS ODP WSM ULTA BGFV TSCO ETSY AEO\n\xa0|\xa0Held by: IJH VTI VB VBR VXF MDY SPMD IWR IJJ IJK\nScroll to Statements']
+DEBUG: Table 8 headers: []
+DEBUG: Table 9 headers: []
+DEBUG: Table 9 first row data: ['Market Cap', '11.97B', 'Forward P/E', '56.98', 'EPS next Y', '0.47', 'Insider Trans', '1.33%', 'Shs Float', '408.62M', 'Perf Month', '12.95%']
+DEBUG: Table 10 headers: ['Date', 'Action', 'Analyst', 'Rating Change', 'Price Target Change', 'Insider Trading', 'Relationship', 'Date', 'Transaction', 'Cost', '#Shares', 'Value ($)', '#Shares Total', 'SEC Form 4']
+DEBUG: Table 10 first row data: ['']
+DEBUG: Table 11 headers: ['Date', 'Action', 'Analyst', 'Rating Change', 'Price Target Change']
+DEBUG: Table 11 first row data: ['Jun-08-23', 'Reiterated', 'Wedbush', 'Underperform', '$6.50 → $6.20']
+DEBUG: Table 12 headers: []
+DEBUG: Table 12 first row data: ['Apr-16-25 04:37PM', "GameStop Corp. (GME): Among Mid- And Large-Cap Stocks Insiders Are Buying After Trump's Tariff Rollout\n\n\n(Insider Monkey)"]
+DEBUG: Table 13 headers: []
+DEBUG: Table 13 first row data: ['07:41AM', 'How GameStop Stock (GME) Became an Unlikely Hedge in Trumps Trade War\n\n\n(TipRanks)']
+DEBUG: Table 14 headers: []
+DEBUG: Table 15 headers: ['Insider Trading', 'Relationship', 'Date', 'Transaction', 'Cost', '#Shares', 'Value ($)', '#Shares Total', 'SEC Form 4']
+DEBUG: Table 15 first row data: ['Attal Alain', 'Director', "Apr 10 '25", 'Buy', '25.75', '10,000', '257,500', '572,464', 'Apr 10 04:18 PM']
+DEBUG: Table 16 headers: []
+DEBUG: About to call ticker_full_info
+IndexError in ticker_full_info for GME: string index out of range
+DEBUG: IndexError traceback: Traceback (most recent call last):
+  File "/Users/jonathangan/Desktop/marketapi/api.py", line 269, in safe_ticker_full_info
+    result = await asyncio.to_thread(lambda: stock.ticker_full_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonathangan/Desktop/marketapi/api.py", line 269, in <lambda>
+    result = await asyncio.to_thread(lambda: stock.ticker_full_info())
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonathangan/Desktop/marketapi/lib/python3.12/site-packages/finvizfinance/quote.py", line 396, in ticker_full_info
+    self.ticker_inside_trader()
+  File "/Users/jonathangan/Desktop/marketapi/lib/python3.12/site-packages/finvizfinance/quote.py", line 325, in ticker_inside_trader
+    info_dict[table_header[i]] = number_covert(col.text)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonathangan/Desktop/marketapi/lib/python3.12/site-packages/finvizfinance/util.py", line 205, in number_covert
+    elif num[-1] == "%":
+         ~~~^^^^
+IndexError: string index out of range
+
+
+DEBUG: Data from finvizfinance for GME:
+Ratings type: <class 'pandas.core.frame.DataFrame'>
+Ratings columns: ['Date', 'Status', 'Outer', 'Rating', 'Price']
+Ratings sample: [{'Date': Timestamp('2023-06-08 00:00:00'), 'Status': 'Reiterated', 'Outer': 'Wedbush', 'Rating': 'Underperform', 'Price': '$6.50 → $6.20'}]
+
+Full info type: <class 'pandas.core.frame.DataFrame'>
+Full info columns: []
+Full info sample: []
+
+Fundament type: <class 'dict'>
+Fundament keys: dict_keys(['Company', 'Sector', 'Industry', 'Country', 'Exchange', 'Index', 'P/E', 'EPS (ttm)', 'Insider Own', 'Shs Outstand', 'Perf Week', 'Market Cap', 'Forward P/E', 'EPS next Y', 'Insider Trans', 'Shs Float', 'Perf Month', 'Income', 'PEG', 'EPS next Q', 'Inst Own', 'Short Float', 'Perf Quarter', 'Sales', 'P/S', 'EPS this Y', 'Inst Trans', 'Short Ratio', 'Perf Half Y', 'Book/sh', 'P/B', 'EPS next Y Percentage', 'ROA', 'Short Interest', 'Perf Year', 'Cash/sh', 'P/C', 'EPS next 5Y', 'ROE', '52W Range From', '52W Range To', 'Perf YTD', 'Dividend Est.', 'P/FCF', 'EPS past 5Y', 'ROI', '52W High', 'Beta', 'Dividend TTM', 'Quick Ratio', 'Sales past 5Y', 'Gross Margin', '52W Low', 'ATR (14)', 'Dividend Ex-Date', 'Current Ratio', 'EPS Y/Y TTM', 'Oper. Margin', 'RSI (14)', 'Volatility W', 'Volatility M', 'Employees', 'Debt/Eq', 'Sales Y/Y TTM', 'Profit Margin', 'Recom', 'Target Price', 'Option/Short', 'LT Debt/Eq', 'EPS Q/Q', 'Payout', 'Rel Volume', 'Prev Close', 'Sales Surprise', 'EPS Surprise', 'Sales Q/Q', 'Earnings', 'Avg Volume', 'Price', 'SMA20', 'SMA50', 'SMA200', 'Trades', 'Volume', 'Change'])
+Fundament sample: {'Company': 'Gamestop Corporation', 'Sector': 'Consumer Cyclical', 'Industry': 'Specialty Retail', 'Country': 'USA', 'Exchange': 'NYSE'}
+
+Extracted price targets: {'avg_price_target': {'value': '13.50'}, 'price_target_low': {'value': 'N/A'}, 'price_target_high': {'value': 'N/A'}}
+
+Extracted recommendation summary: {'strong_buy': {'count': 4}, 'buy': {'count': 3}, 'hold': {'count': 2}, 'sell': {'count': 7}, 'strong_sell': {'count': 0}}
+
+Extracted earnings estimates: {'current_quarter': {'value': '0.08'}, 'next_quarter': {'value': '0.47'}, 'current_year': {'value': '42.42%'}, 'next_year': {'value': '0.47'}}
+
+Extracted revenue estimates: {'current_quarter': {'value': '-28.49%'}, 'next_quarter': {'value': 'N/A'}, 'current_year': {'value': 'N/A'}, 'next_year': {'value': 'N/A'}}
+
+Extracted EPS estimates: {'current_quarter': {'value': '42.10%'}, 'next_quarter': {'value': '0.08'}, 'current_year': {'value': '42.42%'}, 'next_year': {'value': '0.47'}}
+{"timestamp": "2025-04-19T03:23:00.082706", "level": "INFO", "name": "market_api", "module": "logger", "function": "dispatch", "line": 64, "message": "Request completed", "request_id": null, "status_code": 200, "processing_time": "0.3322s"}
+INFO:     127.0.0.1:63639 - "GET /stock/GME/analysts HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [36784]
+INFO:     Started server process [36834]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+{"timestamp": "2025-04-19T03:23:30.850336", "level": "INFO", "name": "market_api", "module": "logger", "function": "dispatch", "line": 48, "message": "Request started", "request_id": null, "method": "GET", "url": "http://localhost:8001/stock/GME/analysts", "client_ip": "127.0.0.1", "user_agent": "curl/8.7.1"}
+
+DEBUG: Starting ticker_full_info for GME
+DEBUG: Getting HTML content for GME
+DEBUG: HTML content length: 346506
+DEBUG: First 500 chars of HTML: <!DOCTYPE html>
+<html class="dark" lang="en">
+ <head>
+  <title>
+   GME - Gamestop Corporation Stock Price and Quote
+  </title>
+  <meta charset="utf-8"/>
+  <meta content="width=1024" name="viewport"/>
+  <meta content="GME - Gamestop Corporation - Stock screener for investors and traders, financial visualizations." name="description"/>
+  <link as="font" crossorigin="" href="/fonts/lato-v17-latin-ext_latin-regular.woff2" rel="preload"/>
+  <link as="font" crossorigin="" href="/fonts/lato-v17-latin-e
+DEBUG: Found 17 tables in HTML
+DEBUG: Table 0 headers: []
+DEBUG: Table 0 first row data: ['', '', '', '', '']
+DEBUG: Table 1 headers: []
+DEBUG: Table 1 first row data: ['']
+DEBUG: Table 2 headers: []
+DEBUG: Table 2 first row data: ['']
+DEBUG: Table 3 headers: []
+DEBUG: Table 3 first row data: ['Home', 'News', 'Screener', 'Maps', 'Groups', 'Portfolio', 'Insider', 'Futures', 'Forex', 'Crypto', 'Backtests', 'Pricing', '', 'Theme', 'Help', 'Login', 'Register']
+DEBUG: Table 4 headers: []
+DEBUG: Table 5 headers: []
+DEBUG: Table 5 first row data: ['Percentage change\r\n                        2.02', '%']
+DEBUG: Table 6 headers: ['Date', 'Action', 'Analyst', 'Rating Change', 'Price Target Change', 'Insider Trading', 'Relationship', 'Date', 'Transaction', 'Cost', '#Shares', 'Value ($)', '#Shares Total', 'SEC Form 4']
+DEBUG: Table 6 first row data: ['Peers: BBY ASO DKS ODP WSM ULTA BGFV TSCO ETSY AEO\n\xa0|\xa0Held by: IJH VTI VB VBR VXF MDY SPMD IWR IJJ IJK\nScroll to Statements\n\n\n\n\n\n\n\n\n\nIndex-\nP/E100.83\nEPS (ttm)0.27\nInsider Own8.60%\nShs Outstand447.00M\nPerf Week7.03%\n\n\nMarket Cap11.97B\nForward P/E56.98\nEPS next Y0.47\nInsider Trans1.33%\nShs Float408.62M\nPerf Month12.95%\n\n\nIncome131.20M\nPEG8.06\nEPS next Q0.08\nInst Own32.44%\nShort Float11.64%\nPerf Quarter-3.39%\n\n\nSales3.82B\nP/S3.13\nEPS this Y42.42%\nInst Trans14.22%\nShort Ratio4.93\nPerf Half Y25.91%\n\n\nBook/sh11.03\nP/B2.43\nEPS next Y0.00%\nROA2.98%\nShort Interest47.56M\nPerf Year158.24%\n\n\nCash/sh10.69\nP/C2.51\nEPS next 5Y12.51%\nROE4.19%\n52W Range10.01 - 64.83\nPerf YTD-14.55%\n\n\nDividend Est.-\nP/FCF92.38\nEPS past 5Y-\nROI2.53%\n52W High-58.69%\nBeta-0.64\n\n\nDividend TTM-\nQuick Ratio7.33\nSales past 5Y-8.62%\nGross Margin29.14%\n52W Low167.53%\nATR (14)1.61\n\n\nDividend Ex-DateMar 14, 2019\nCurrent Ratio8.05\nEPS Y/Y TTM1150.23%\nOper. Margin-0.60%\nRSI (14)58.10\nVolatility4.19% 7.02%\n\n\nEmployees6000\nDebt/Eq0.08\nSales Y/Y TTM-27.50%\nProfit Margin3.43%\nRecom4.50\nTarget Price13.50\n\n\nOption/ShortYes / Yes\nLT Debt/Eq0.05\nEPS Q/Q42.10%\nPayout0.00%\nRel Volume0.76\nPrev Close26.25\n\n\nSales Surprise-13.19%\nEPS Surprise275.00%\nSales Q/Q-28.49%\nEarningsMar 25 AMC\nAvg Volume9.65M\nPrice26.78\n\n\nSMA209.00%\nSMA508.69%\nSMA2007.68%\nTrades\n\n\nVolume7,326,480\nChange2.02%', 'Peers: BBY ASO DKS ODP WSM ULTA BGFV TSCO ETSY AEO\n\xa0|\xa0Held by: IJH VTI VB VBR VXF MDY SPMD IWR IJJ IJK\nScroll to Statements', 'Index', '-', 'P/E', '100.83', 'EPS (ttm)', '0.27', 'Insider Own', '8.60%', 'Shs Outstand', '447.00M', 'Perf Week', '7.03%', 'Market Cap', '11.97B', 'Forward P/E', '56.98', 'EPS next Y', '0.47', 'Insider Trans', '1.33%', 'Shs Float', '408.62M', 'Perf Month', '12.95%', 'Income', '131.20M', 'PEG', '8.06', 'EPS next Q', '0.08', 'Inst Own', '32.44%', 'Short Float', '11.64%', 'Perf Quarter', '-3.39%', 'Sales', '3.82B', 'P/S', '3.13', 'EPS this Y', '42.42%', 'Inst Trans', '14.22%', 'Short Ratio', '4.93', 'Perf Half Y', '25.91%', 'Book/sh', '11.03', 'P/B', '2.43', 'EPS next Y', '0.00%', 'ROA', '2.98%', 'Short Interest', '47.56M', 'Perf Year', '158.24%', 'Cash/sh', '10.69', 'P/C', '2.51', 'EPS next 5Y', '12.51%', 'ROE', '4.19%', '52W Range', '10.01 - 64.83', 'Perf YTD', '-14.55%', 'Dividend Est.', '-', 'P/FCF', '92.38', 'EPS past 5Y', '-', 'ROI', '2.53%', '52W High', '-58.69%', 'Beta', '-0.64', 'Dividend TTM', '-', 'Quick Ratio', '7.33', 'Sales past 5Y', '-8.62%', 'Gross Margin', '29.14%', '52W Low', '167.53%', 'ATR (14)', '1.61', 'Dividend Ex-Date', 'Mar 14, 2019', 'Current Ratio', '8.05', 'EPS Y/Y TTM', '1150.23%', 'Oper. Margin', '-0.60%', 'RSI (14)', '58.10', 'Volatility', '4.19% 7.02%', 'Employees', '6000', 'Debt/Eq', '0.08', 'Sales Y/Y TTM', '-27.50%', 'Profit Margin', '3.43%', 'Recom', '4.50', 'Target Price', '13.50', 'Option/Short', 'Yes / Yes', 'LT Debt/Eq', '0.05', 'EPS Q/Q', '42.10%', 'Payout', '0.00%', 'Rel Volume', '0.76', 'Prev Close', '26.25', 'Sales Surprise', '-13.19%', 'EPS Surprise', '275.00%', 'Sales Q/Q', '-28.49%', 'Earnings', 'Mar 25 AMC', 'Avg Volume', '9.65M', 'Price', '26.78', 'SMA20', '9.00%', 'SMA50', '8.69%', 'SMA200', '7.68%', 'Trades', '', 'Volume', '7,326,480', 'Change', '2.02%']
+DEBUG: Table 7 headers: []
+DEBUG: Table 7 first row data: ['Peers: BBY ASO DKS ODP WSM ULTA BGFV TSCO ETSY AEO\n\xa0|\xa0Held by: IJH VTI VB VBR VXF MDY SPMD IWR IJJ IJK\nScroll to Statements']
+DEBUG: Table 8 headers: []
+DEBUG: Table 9 headers: []
+DEBUG: Table 9 first row data: ['Market Cap', '11.97B', 'Forward P/E', '56.98', 'EPS next Y', '0.47', 'Insider Trans', '1.33%', 'Shs Float', '408.62M', 'Perf Month', '12.95%']
+DEBUG: Table 10 headers: ['Date', 'Action', 'Analyst', 'Rating Change', 'Price Target Change', 'Insider Trading', 'Relationship', 'Date', 'Transaction', 'Cost', '#Shares', 'Value ($)', '#Shares Total', 'SEC Form 4']
+DEBUG: Table 10 first row data: ['']
+DEBUG: Table 11 headers: ['Date', 'Action', 'Analyst', 'Rating Change', 'Price Target Change']
+DEBUG: Table 11 first row data: ['Jun-08-23', 'Reiterated', 'Wedbush', 'Underperform', '$6.50 → $6.20']
+DEBUG: Table 12 headers: []
+DEBUG: Table 12 first row data: ['Apr-16-25 04:37PM', "GameStop Corp. (GME): Among Mid- And Large-Cap Stocks Insiders Are Buying After Trump's Tariff Rollout\n\n\n(Insider Monkey)"]
+DEBUG: Table 13 headers: []
+DEBUG: Table 13 first row data: ['07:41AM', 'How GameStop Stock (GME) Became an Unlikely Hedge in Trumps Trade War\n\n\n(TipRanks)']
+DEBUG: Table 14 headers: []
+DEBUG: Table 15 headers: ['Insider Trading', 'Relationship', 'Date', 'Transaction', 'Cost', '#Shares', 'Value ($)', '#Shares Total', 'SEC Form 4']
+DEBUG: Table 15 first row data: ['Attal Alain', 'Director', "Apr 10 '25", 'Buy', '25.75', '10,000', '257,500', '572,464', 'Apr 10 04:18 PM']
+DEBUG: Table 16 headers: []
+DEBUG: About to call ticker_full_info
+IndexError in ticker_full_info for GME: string index out of range
+DEBUG: IndexError traceback: Traceback (most recent call last):
+  File "/Users/jonathangan/Desktop/marketapi/api.py", line 281, in safe_ticker_full_info
+    result = await asyncio.to_thread(lambda: stock.ticker_full_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonathangan/Desktop/marketapi/api.py", line 281, in <lambda>
+    result = await asyncio.to_thread(lambda: stock.ticker_full_info())
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonathangan/Desktop/marketapi/lib/python3.12/site-packages/finvizfinance/quote.py", line 396, in ticker_full_info
+    self.ticker_inside_trader()
+  File "/Users/jonathangan/Desktop/marketapi/lib/python3.12/site-packages/finvizfinance/quote.py", line 325, in ticker_inside_trader
+    info_dict[table_header[i]] = number_covert(col.text)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/jonathangan/Desktop/marketapi/lib/python3.12/site-packages/finvizfinance/util.py", line 205, in number_covert
+    elif num[-1] == "%":
+         ~~~^^^^
+IndexError: string index out of range
+
+
+DEBUG: Data from finvizfinance for GME:
+Ratings type: <class 'pandas.core.frame.DataFrame'>
+Ratings columns: ['Date', 'Status', 'Outer', 'Rating', 'Price']
+Ratings sample: [{'Date': Timestamp('2023-06-08 00:00:00'), 'Status': 'Reiterated', 'Outer': 'Wedbush', 'Rating': 'Underperform', 'Price': '$6.50 → $6.20'}]
+
+Full info type: <class 'pandas.core.frame.DataFrame'>
+Full info columns: []
+Full info sample: []
+
+Fundament type: <class 'dict'>
+Fundament keys: dict_keys(['Company', 'Sector', 'Industry', 'Country', 'Exchange', 'Index', 'P/E', 'EPS (ttm)', 'Insider Own', 'Shs Outstand', 'Perf Week', 'Market Cap', 'Forward P/E', 'EPS next Y', 'Insider Trans', 'Shs Float', 'Perf Month', 'Income', 'PEG', 'EPS next Q', 'Inst Own', 'Short Float', 'Perf Quarter', 'Sales', 'P/S', 'EPS this Y', 'Inst Trans', 'Short Ratio', 'Perf Half Y', 'Book/sh', 'P/B', 'EPS next Y Percentage', 'ROA', 'Short Interest', 'Perf Year', 'Cash/sh', 'P/C', 'EPS next 5Y', 'ROE', '52W Range From', '52W Range To', 'Perf YTD', 'Dividend Est.', 'P/FCF', 'EPS past 5Y', 'ROI', '52W High', 'Beta', 'Dividend TTM', 'Quick Ratio', 'Sales past 5Y', 'Gross Margin', '52W Low', 'ATR (14)', 'Dividend Ex-Date', 'Current Ratio', 'EPS Y/Y TTM', 'Oper. Margin', 'RSI (14)', 'Volatility W', 'Volatility M', 'Employees', 'Debt/Eq', 'Sales Y/Y TTM', 'Profit Margin', 'Recom', 'Target Price', 'Option/Short', 'LT Debt/Eq', 'EPS Q/Q', 'Payout', 'Rel Volume', 'Prev Close', 'Sales Surprise', 'EPS Surprise', 'Sales Q/Q', 'Earnings', 'Avg Volume', 'Price', 'SMA20', 'SMA50', 'SMA200', 'Trades', 'Volume', 'Change'])
+Fundament sample: {'Company': 'Gamestop Corporation', 'Sector': 'Consumer Cyclical', 'Industry': 'Specialty Retail', 'Country': 'USA', 'Exchange': 'NYSE'}
+
+Extracted price targets: {'avg_price_target': {'value': '13.50'}, 'price_target_low': {'value': 'N/A'}, 'price_target_high': {'value': 'N/A'}}
+
+Extracted recommendation summary: {'strong_buy': {'count': 4}, 'buy': {'count': 3}, 'hold': {'count': 2}, 'sell': {'count': 7}, 'strong_sell': {'count': 0}}
+
+Extracted earnings estimates: {'current_quarter': {'value': '0.08'}, 'next_quarter': {'value': '0.47'}, 'current_year': {'value': '42.42%'}, 'next_year': {'value': '0.47'}}
+
+Extracted revenue estimates: {'current_quarter': {'value': '-28.49%'}, 'next_quarter': {'value': 'N/A'}, 'current_year': {'value': 'N/A'}, 'next_year': {'value': 'N/A'}}
+
+Extracted EPS estimates: {'current_quarter': {'value': '42.10%'}, 'next_quarter': {'value': '0.08'}, 'current_year': {'value': '42.42%'}, 'next_year': {'value': '0.47'}}
+{"timestamp": "2025-04-19T03:23:31.219498", "level": "INFO", "name": "market_api", "module": "logger", "function": "dispatch", "line": 64, "message": "Request completed", "request_id": null, "status_code": 200, "processing_time": "0.3694s"}
+INFO:     127.0.0.1:63687 - "GET /stock/GME/analysts HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'api.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [36834]
+INFO:     Started server process [36889]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [36889]
+INFO:     Started server process [37067]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37067]
+INFO:     Started server process [37107]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37107]
+INFO:     Started server process [37187]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37187]
+INFO:     Started server process [37214]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37214]
+INFO:     Started server process [37248]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37248]
+INFO:     Started server process [37289]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37289]
+INFO:     Started server process [37353]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37353]
+INFO:     Started server process [37389]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37389]
+INFO:     Started server process [37498]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37498]
+INFO:     Started server process [37544]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37544]
+INFO:     Started server process [37642]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37642]
+INFO:     Started server process [37710]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37710]
+INFO:     Started server process [37737]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37737]
+INFO:     Started server process [37769]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37769]
+INFO:     Started server process [37797]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37797]
+INFO:     Started server process [37833]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37833]
+INFO:     Started server process [37880]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37880]
+INFO:     Started server process [37935]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37935]
+INFO:     Started server process [37963]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [37963]
+INFO:     Started server process [38004]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/phil_fisher.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38004]
+INFO:     Started server process [38056]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38056]
+INFO:     Started server process [38079]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38079]
+INFO:     Started server process [38110]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/stanley_druckenmiller.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38110]
+INFO:     Started server process [38182]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38182]
+INFO:     Started server process [38235]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38235]
+INFO:     Started server process [38264]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38264]
+INFO:     Started server process [38309]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38309]
+INFO:     Started server process [38337]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38337]
+INFO:     Started server process [38369]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38369]
+INFO:     Started server process [38397]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38397]
+INFO:     Started server process [38422]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38422]
+INFO:     Started server process [38452]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38452]
+INFO:     Started server process [38479]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38479]
+INFO:     Started server process [38585]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38585]
+INFO:     Started server process [38615]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38615]
+INFO:     Started server process [38640]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38640]
+INFO:     Started server process [38666]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38666]
+INFO:     Started server process [38694]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38694]
+INFO:     Started server process [38767]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'tools/combined_metrics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
