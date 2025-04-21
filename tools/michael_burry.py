@@ -1,5 +1,3 @@
-from tools.finbert_utils import estimate_sentiment
-
 def latest_line_item(line_items):
     """Return the most recent line item from the list."""
     return line_items[0] if line_items else None
@@ -118,6 +116,44 @@ def analyze_insider_activity(insider_trades):
 
 # ----- Contrarian sentiment -------------------------------------------------
 
+def simple_sentiment_analysis(text):
+    """
+    Perform basic sentiment analysis using keyword matching.
+    Returns 'negative', 'positive', or 'neutral'.
+    """
+    # Convert to lowercase for case-insensitive matching
+    text = text.lower()
+    
+    # Define keyword lists
+    negative_keywords = {
+        'decline', 'decrease', 'drop', 'fall', 'loss', 'lose', 'losing', 'lost',
+        'risk', 'risky', 'concern', 'worried', 'worry', 'fear', 'afraid',
+        'bankruptcy', 'bankrupt', 'default', 'debt', 'trouble', 'problem',
+        'weak', 'weaken', 'weakening', 'poor', 'unstable', 'volatile',
+        'sell', 'selling', 'sold', 'bearish', 'bear', 'crash', 'crashing',
+        'negative', 'negatively', 'down', 'downward', 'downtrend'
+    }
+    
+    positive_keywords = {
+        'rise', 'rising', 'increase', 'increasing', 'growth', 'growing',
+        'gain', 'gaining', 'profit', 'profitable', 'success', 'successful',
+        'strong', 'strengthen', 'strengthening', 'improve', 'improving',
+        'buy', 'buying', 'bought', 'bullish', 'bull', 'recovery', 'recovering',
+        'positive', 'positively', 'up', 'upward', 'uptrend'
+    }
+    
+    # Count keyword matches
+    negative_count = sum(1 for word in negative_keywords if word in text)
+    positive_count = sum(1 for word in positive_keywords if word in text)
+    
+    # Determine sentiment based on keyword counts
+    if negative_count > positive_count + 1:  # Require a margin to be considered negative
+        return 'negative'
+    elif positive_count > negative_count + 1:  # Require a margin to be considered positive
+        return 'positive'
+    else:
+        return 'neutral'
+
 def analyze_contrarian_sentiment(news):
     """Very rough gauge: a wall of recent negative headlines can be a *positive* for a contrarian."""
 
@@ -128,12 +164,9 @@ def analyze_contrarian_sentiment(news):
         details.append("No recent news")
         return {"score": score, "max_score": max_score, "details": "; ".join(details)}
 
-    # Count negative sentiment articles
-    # sentiment_negative_count = sum(
-    #     1 for n in news if n.sentiment and n.sentiment.lower() in ["negative", "bearish"]
-    # )
+    # Count negative sentiment articles using simple keyword analysis
     sentiment_negative_count = sum(
-        1 for n in news if estimate_sentiment(n["content"]['title'])[1] in ["negative"]
+        1 for n in news if simple_sentiment_analysis(n["content"]['title']) == "negative"
     )
     
     if sentiment_negative_count >= 5:
