@@ -10,6 +10,7 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
     details = []
     
     if not metrics or not financial_line_items:
+        print("MISSING DATA: No metrics or financial_line_items provided for moat strength analysis")
         return {
             "score": 0,
             "details": "Insufficient data to analyze moat strength"
@@ -34,6 +35,7 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
         else:
             details.append("Poor ROIC: Never exceeds 15% threshold")
     else:
+        print("MISSING DATA: No ROIC data available for moat strength analysis")
         details.append("No ROIC data available")
     
     # 2. Pricing power - check gross margin stability and trends
@@ -52,6 +54,7 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
         else:
             details.append("Limited pricing power: Low or declining gross margins")
     else:
+        print("MISSING DATA: Insufficient gross margin data for moat strength analysis")
         details.append("Insufficient gross margin data")
     
     # 3. Capital intensity - Munger prefers low capex businesses
@@ -75,8 +78,10 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
             else:
                 details.append(f"High capital requirements: Avg capex {avg_capex_ratio:.1%} of revenue")
         else:
+            print("MISSING DATA: No capital expenditure data available for moat strength analysis")
             details.append("No capital expenditure data available")
     else:
+        print("MISSING DATA: Insufficient data for capital intensity analysis")
         details.append("Insufficient data for capital intensity analysis")
     
     # 4. Intangible assets - Munger values R&D and intellectual property
@@ -90,10 +95,14 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
         if sum(r_and_d) > 0:  # If company is investing in R&D
             score += 1
             details.append("Invests in R&D, building intellectual property")
+    else:
+        print("MISSING DATA: No R&D data available for moat strength analysis")
     
     if (goodwill_and_intangible_assets and len(goodwill_and_intangible_assets) > 0):
         score += 1
         details.append("Significant goodwill/intangible assets, suggesting brand value or IP")
+    else:
+        print("MISSING DATA: No goodwill/intangible assets data available for moat strength analysis")
     
     # Scale score to 0-10 range
     final_score = min(10, score * 10 / 9)  # Max possible raw score is 9
@@ -117,6 +126,7 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
     details = []
     
     if not financial_line_items:
+        print("MISSING DATA: No financial_line_items provided for management quality analysis")
         return {
             "score": 0,
             "details": "Insufficient data to analyze management quality"
@@ -151,8 +161,10 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
             else:
                 details.append(f"Poor cash conversion: FCF/NI ratio of only {avg_ratio:.2f}")
         else:
+            print("MISSING DATA: Could not calculate FCF to Net Income ratios")
             details.append("Could not calculate FCF to Net Income ratios")
     else:
+        print("MISSING DATA: Missing FCF or Net Income data for management quality analysis")
         details.append("Missing FCF or Net Income data")
     
     # 2. Debt management - Munger is cautious about debt
@@ -178,6 +190,7 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         else:
             details.append(f"High debt level: D/E ratio of {recent_de_ratio:.2f}")
     else:
+        print("MISSING DATA: Missing debt or equity data for management quality analysis")
         details.append("Missing debt or equity data")
     
     # 3. Cash management efficiency - Munger values appropriate cash levels
@@ -205,6 +218,7 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
             # Too little cash - potentially risky
             details.append(f"Low cash reserves: Cash/Revenue ratio of {cash_to_revenue:.2f}")
     else:
+        print("MISSING DATA: Insufficient cash or revenue data for management quality analysis")
         details.append("Insufficient cash or revenue data")
     
     # 4. Insider activity - Munger values skin in the game
@@ -231,8 +245,10 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
             else:
                 details.append(f"Mixed insider activity: {buys}/{total_trades} transactions are purchases")
         else:
+            print("MISSING DATA: No recorded insider transactions")
             details.append("No recorded insider transactions")
     else:
+        print("MISSING DATA: No insider trading data available for management quality analysis")
         details.append("No insider trading data available")
     
     # 5. Consistency in share count - Munger prefers stable/decreasing shares
@@ -252,6 +268,7 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         else:
             details.append("Moderate share count increase over time")
     else:
+        print("MISSING DATA: Insufficient share count data for management quality analysis")
         details.append("Insufficient share count data")
     
     # Scale score to 0-10 range
@@ -273,6 +290,7 @@ def analyze_predictability(financial_line_items: list) -> dict:
     details = []
     
     if not financial_line_items or len(financial_line_items) < 5:
+        print("MISSING DATA: Insufficient financial_line_items for predictability analysis (need 5+ years)")
         return {
             "score": 0,
             "details": "Insufficient data to analyze business predictability (need 5+ years)"
@@ -304,6 +322,7 @@ def analyze_predictability(financial_line_items: list) -> dict:
         else:
             details.append(f"Declining or highly unpredictable revenue: {avg_growth:.1%} avg growth")
     else:
+        print("MISSING DATA: Insufficient revenue history for predictability analysis")
         details.append("Insufficient revenue history for predictability analysis")
     
     # 2. Operating income stability
@@ -329,6 +348,7 @@ def analyze_predictability(financial_line_items: list) -> dict:
         else:
             details.append(f"Unpredictable operations: Operating income positive in only {positive_periods}/{len(op_income)} periods")
     else:
+        print("MISSING DATA: Insufficient operating income history for predictability analysis")
         details.append("Insufficient operating income history")
     
     # 3. Margin consistency - Munger values stable margins
@@ -349,6 +369,7 @@ def analyze_predictability(financial_line_items: list) -> dict:
         else:
             details.append(f"Unpredictable margins: {avg_margin:.1%} avg with high volatility ({margin_volatility:.1%})")
     else:
+        print("MISSING DATA: Insufficient margin history for predictability analysis")
         details.append("Insufficient margin history")
     
     # 4. Cash generation reliability
@@ -370,6 +391,7 @@ def analyze_predictability(financial_line_items: list) -> dict:
         else:
             details.append(f"Unpredictable cash generation: Positive FCF in only {positive_fcf_periods}/{len(fcf_values)} periods")
     else:
+        print("MISSING DATA: Insufficient free cash flow history for predictability analysis")
         details.append("Insufficient free cash flow history")
     
     # Scale score to 0-10 range

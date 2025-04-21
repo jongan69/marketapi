@@ -249,6 +249,13 @@ def calculate_roe(stock_ticker: str) -> pd.Series:
     except Exception as e:
         print(f"Error calculating ROE: {str(e)}")
         return pd.Series()
+    
+def get_research_and_development(stock_ticker: str) -> pd.Series:
+    """
+    Get research and development expenses for a given stock ticker.
+    """
+    dat = yf.Ticker(stock_ticker).financials.loc["Research And Development"]
+    return dat
 
 # Calculate Current Ratio
 def calculate_current_ratio(stock_ticker: str) -> pd.Series:
@@ -1179,6 +1186,79 @@ def get_all_fundamental_metrics(stock_ticker: str) -> dict:
     except Exception as e:
         print(f"Error getting all fundamental metrics: {str(e)}")
         return {}
+    
+def safe_get(d, key, default=None):
+    if isinstance(d, pd.Series):
+        # For pandas.Series, return the value of the specified key or the default
+        return d.get(key, default) if d is not None else default
+    return d.get(key, default) if d else default
+
+def prepare_financial_line_items(ticker_symbol: str) -> list:
+    print(f"Starting prepare_financial_line_items for ticker: {ticker_symbol}")
+    ticker = yf.Ticker(ticker_symbol)
+
+    try:
+        income_stmt = ticker.get_income_stmt(as_dict=True)
+        cashflow_stmt = ticker.get_cashflow(as_dict=True)
+        financials = ticker.financials
+        
+    except Exception as e:
+        print(f"Error fetching financial data for {ticker_symbol}: {e}")
+        return []
+    
+    print("\nFetched financial statements:")
+    print(f"Income Statement Periods: {list(income_stmt.keys())}")
+    print(f"Cash Flow Periods: {list(cashflow_stmt.keys())}")
+
+    periods = income_stmt.keys()  # Use income statement periods as base
+
+    financial_line_items = []
+
+    for period in periods:
+        print(f"\nProcessing period: {period}")
+
+        revenue = safe_get(income_stmt.get(period), 'TotalRevenue')
+        gross_profit = safe_get(income_stmt.get(period), 'GrossProfit')
+        operating_income = safe_get(income_stmt.get(period), 'OperatingIncome')
+        rnd = safe_get(financials.get(period), 'Research And Development')
+        op_expenses = safe_get(income_stmt.get(period), 'TotalExpenses')
+
+        free_cash_flow = safe_get(cashflow_stmt.get(period), 'FreeCashFlow')
+        capex = safe_get(cashflow_stmt.get(period), 'CapitalExpenditure')
+        dividends = safe_get(cashflow_stmt.get(period), 'CashDividendsPaid')
+
+        # Calculate margins, handle None (NaN) values
+        gross_margin = (gross_profit / revenue) if revenue and gross_profit else None
+        operating_margin = (operating_income / revenue) if revenue and operating_income else None
+
+        print(f"Revenue: {revenue}, Gross Profit: {gross_profit}, Gross Margin: {gross_margin}")
+        print(f"Operating Income: {operating_income}, Operating Margin: {operating_margin}")
+        print(f"Free Cash Flow: {free_cash_flow}, CapEx: {capex}, Dividends: {dividends}")
+
+        item = {
+            'period': period,
+            'revenue': revenue,
+            'gross_margin': gross_margin,
+            'operating_expense': op_expenses,
+            'research_and_development': rnd,
+            'operating_margin': operating_margin,
+            'free_cash_flow': free_cash_flow,
+            'capital_expenditure': capex,
+            'dividends_and_other_cash_distributions': dividends
+        }
+
+        # Filter out line items where critical values are NaN
+        if pd.isna(revenue) and pd.isna(gross_profit) and pd.isna(operating_income) and pd.isna(free_cash_flow):
+            print(f"Skipping empty line item for period {period}")
+            continue  # Skip this item as it has no meaningful data
+
+        print(f"Prepared financial line item: {item}")
+        financial_line_items.append(item)
+
+    print(f"\nFinished preparing {len(financial_line_items)} financial line items for {ticker_symbol}.")
+    return financial_line_items
+
+
 
 def test_all_functions(ticker="AAPL"):
     """

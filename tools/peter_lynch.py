@@ -7,6 +7,7 @@ def analyze_lynch_growth(financial_line_items: list) -> dict:
     often searching for potential 'ten-baggers' with a long runway.
     """
     if not financial_line_items or len(financial_line_items) < 2:
+        print("MISSING DATA: Insufficient financial data for growth analysis")
         return {"score": 0, "details": "Insufficient financial data for growth analysis"}
 
     details = []
@@ -31,8 +32,10 @@ def analyze_lynch_growth(financial_line_items: list) -> dict:
             else:
                 details.append(f"Flat or negative revenue growth: {rev_growth:.1%}")
         else:
+            print("MISSING DATA: Older revenue is zero/negative; can't compute revenue growth")
             details.append("Older revenue is zero/negative; can't compute revenue growth.")
     else:
+        print(f"MISSING DATA: Not enough revenue data to assess growth. Found {len(revenues)} data points, need at least 2")
         details.append("Not enough revenue data to assess growth.")
 
     # 2) EPS Growth
@@ -54,8 +57,10 @@ def analyze_lynch_growth(financial_line_items: list) -> dict:
             else:
                 details.append(f"Minimal or negative EPS growth: {eps_growth:.1%}")
         else:
+            print("MISSING DATA: Older EPS is near zero; skipping EPS growth calculation")
             details.append("Older EPS is near zero; skipping EPS growth calculation.")
     else:
+        print(f"MISSING DATA: Not enough EPS data for growth calculation. Found {len(eps_values)} data points, need at least 2")
         details.append("Not enough EPS data for growth calculation.")
 
     # raw_score can be up to 6 => scale to 0–10
@@ -72,6 +77,7 @@ def analyze_lynch_fundamentals(financial_line_items: list) -> dict:
     Lynch avoided heavily indebted or complicated businesses.
     """
     if not financial_line_items:
+        print("MISSING DATA: Insufficient fundamentals data")
         return {"score": 0, "details": "Insufficient fundamentals data"}
 
     details = []
@@ -93,6 +99,7 @@ def analyze_lynch_fundamentals(financial_line_items: list) -> dict:
         else:
             details.append(f"High debt-to-equity: {de_ratio:.2f}")
     else:
+        print("MISSING DATA: No consistent debt/equity data available")
         details.append("No consistent debt/equity data available.")
 
     # 2) Operating Margin
@@ -108,6 +115,7 @@ def analyze_lynch_fundamentals(financial_line_items: list) -> dict:
         else:
             details.append(f"Low operating margin: {om_recent:.1%}")
     else:
+        print("MISSING DATA: No operating margin data available")
         details.append("No operating margin data available.")
 
     # 3) Positive Free Cash Flow
@@ -119,6 +127,7 @@ def analyze_lynch_fundamentals(financial_line_items: list) -> dict:
         else:
             details.append(f"Recent FCF is negative: {fcf_values[0]:,.0f}")
     else:
+        print("MISSING DATA: No free cash flow data available")
         details.append("No free cash flow data available.")
 
     # raw_score up to 6 => scale to 0–10
@@ -134,6 +143,7 @@ def analyze_lynch_valuation(financial_line_items: list, market_cap: float | None
     A PEG < 1 is very attractive; 1-2 is fair; >2 is expensive.
     """
     if not financial_line_items or market_cap is None:
+        print("MISSING DATA: Insufficient data for valuation")
         return {"score": 0, "details": "Insufficient data for valuation"}
 
     details = []
@@ -149,6 +159,7 @@ def analyze_lynch_valuation(financial_line_items: list, market_cap: float | None
         pe_ratio = market_cap / net_incomes[0]
         details.append(f"Estimated P/E: {pe_ratio:.2f}")
     else:
+        print("MISSING DATA: No positive net income => can't compute approximate P/E")
         details.append("No positive net income => can't compute approximate P/E")
 
     # If we have at least 2 EPS data points, let's estimate growth
@@ -160,8 +171,10 @@ def analyze_lynch_valuation(financial_line_items: list, market_cap: float | None
             eps_growth_rate = (latest_eps - older_eps) / older_eps
             details.append(f"Approx EPS growth rate: {eps_growth_rate:.1%}")
         else:
+            print("MISSING DATA: Cannot compute EPS growth rate (older EPS <= 0)")
             details.append("Cannot compute EPS growth rate (older EPS <= 0)")
     else:
+        print(f"MISSING DATA: Not enough EPS data to compute growth rate. Found {len(eps_values)} data points, need at least 2")
         details.append("Not enough EPS data to compute growth rate")
 
     # Compute PEG if possible
@@ -173,6 +186,8 @@ def analyze_lynch_valuation(financial_line_items: list, market_cap: float | None
         # Implementation can vary, but let's do a standard approach: PEG = PE / (Growth * 100).
         peg_ratio = pe_ratio / (eps_growth_rate * 100)
         details.append(f"PEG ratio: {peg_ratio:.2f}")
+    else:
+        print("MISSING DATA: Cannot compute PEG ratio due to missing P/E or growth rate data")
 
     # Scoring logic:
     #   - P/E < 15 => +2, < 25 => +1
@@ -200,6 +215,7 @@ def analyze_sentiment(news_items: list) -> dict:
     Basic news sentiment check. Negative headlines weigh on the final score.
     """
     if not news_items:
+        print("MISSING DATA: No news data; defaulting to neutral sentiment")
         return {"score": 5, "details": "No news data; default to neutral sentiment"}
 
     negative_keywords = ["lawsuit", "fraud", "negative", "downturn", "decline", "investigation", "recall"]
@@ -238,6 +254,7 @@ def analyze_insider_activity(insider_trades: list) -> dict:
     details = []
 
     if not insider_trades:
+        print("MISSING DATA: No insider trades data; defaulting to neutral")
         details.append("No insider trades data; defaulting to neutral")
         return {"score": score, "details": "; ".join(details)}
 
@@ -251,6 +268,7 @@ def analyze_insider_activity(insider_trades: list) -> dict:
 
     total = buys + sells
     if total == 0:
+        print("MISSING DATA: No significant buy/sell transactions found; neutral stance")
         details.append("No significant buy/sell transactions found; neutral stance")
         return {"score": score, "details": "; ".join(details)}
 

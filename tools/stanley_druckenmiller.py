@@ -8,6 +8,7 @@ def analyze_growth_and_momentum(financial_line_items: list, prices: list) -> dic
       - Price Momentum
     """
     if not financial_line_items or len(financial_line_items) < 2:
+        print("MISSING DATA: Insufficient financial data for growth analysis")
         return {"score": 0, "details": "Insufficient financial data for growth analysis"}
 
     details = []
@@ -34,8 +35,10 @@ def analyze_growth_and_momentum(financial_line_items: list, prices: list) -> dic
             else:
                 details.append(f"Minimal/negative revenue growth: {rev_growth:.1%}")
         else:
+            print("MISSING DATA: Older revenue is zero/negative; can't compute revenue growth")
             details.append("Older revenue is zero/negative; can't compute revenue growth.")
     else:
+        print(f"MISSING DATA: Not enough revenue data points for growth calculation. Found {len(revenues)} points, need at least 2")
         details.append("Not enough revenue data points for growth calculation.")
 
     #
@@ -60,8 +63,10 @@ def analyze_growth_and_momentum(financial_line_items: list, prices: list) -> dic
             else:
                 details.append(f"Minimal/negative EPS growth: {eps_growth:.1%}")
         else:
+            print("MISSING DATA: Older EPS is near zero; skipping EPS growth calculation")
             details.append("Older EPS is near zero; skipping EPS growth calculation.")
     else:
+        print(f"MISSING DATA: Not enough EPS data points for growth calculation. Found {len(eps_values)} points, need at least 2")
         details.append("Not enough EPS data points for growth calculation.")
 
     #
@@ -88,10 +93,13 @@ def analyze_growth_and_momentum(financial_line_items: list, prices: list) -> dic
                 else:
                     details.append(f"Negative price momentum: {pct_change:.1%}")
             else:
+                print("MISSING DATA: Invalid start price (<= 0); can't compute momentum")
                 details.append("Invalid start price (<= 0); can't compute momentum.")
         else:
+            print(f"MISSING DATA: Insufficient price data for momentum calculation. Found {len(close_prices)} close prices, need at least 2")
             details.append("Insufficient price data for momentum calculation.")
     else:
+        print(f"MISSING DATA: Not enough recent price data for momentum analysis. Found {len(prices) if prices else 0} price points, need at least 30")
         details.append("Not enough recent price data for momentum analysis.")
 
     # We assigned up to 3 points each for:
@@ -110,6 +118,7 @@ def analyze_risk_reward(financial_line_items: list, market_cap: float | None, pr
     Aims for strong upside with contained downside.
     """
     if not financial_line_items or not prices:
+        print("MISSING DATA: Insufficient data for risk-reward analysis")
         return {"score": 0, "details": "Insufficient data for risk-reward analysis"}
 
     details = []
@@ -137,6 +146,7 @@ def analyze_risk_reward(financial_line_items: list, market_cap: float | None, pr
         else:
             details.append(f"High debt-to-equity: {de_ratio:.2f}")
     else:
+        print(f"MISSING DATA: No consistent debt/equity data available. Found {len(debt_values)} debt values and {len(equity_values)} equity values")
         details.append("No consistent debt/equity data available.")
 
     #
@@ -165,10 +175,13 @@ def analyze_risk_reward(financial_line_items: list, market_cap: float | None, pr
                 else:
                     details.append(f"Very high volatility: daily returns stdev {stdev:.2%}")
             else:
+                print("MISSING DATA: Insufficient daily returns data for volatility calculation")
                 details.append("Insufficient daily returns data for volatility calc.")
         else:
+            print(f"MISSING DATA: Not enough close-price data points for volatility analysis. Found {len(close_prices)} points, need at least 10")
             details.append("Not enough close-price data points for volatility analysis.")
     else:
+        print(f"MISSING DATA: Not enough price data for volatility analysis. Found {len(prices)} price points, need at least 10")
         details.append("Not enough price data for volatility analysis.")
 
     # raw_score out of 6 => scale to 0–10
@@ -186,6 +199,7 @@ def analyze_druckenmiller_valuation(financial_line_items: list, market_cap: floa
     Each can yield up to 2 points => max 8 raw points => scale to 0–10.
     """
     if not financial_line_items or market_cap is None:
+        print("MISSING DATA: Insufficient data to perform valuation")
         return {"score": 0, "details": "Insufficient data to perform valuation"}
 
     details = []
@@ -220,6 +234,7 @@ def analyze_druckenmiller_valuation(financial_line_items: list, market_cap: floa
             details.append(f"High P/E: {pe:.2f}")
         raw_score += pe_points
     else:
+        print(f"MISSING DATA: No positive net income for P/E calculation. Found {len(net_incomes)} net income values")
         details.append("No positive net income for P/E calculation")
 
     # 2) P/FCF
@@ -237,6 +252,7 @@ def analyze_druckenmiller_valuation(financial_line_items: list, market_cap: floa
             details.append(f"High P/FCF: {pfcf:.2f}")
         raw_score += pfcf_points
     else:
+        print(f"MISSING DATA: No positive free cash flow for P/FCF calculation. Found {len(fcf_values)} FCF values")
         details.append("No positive free cash flow for P/FCF calculation")
 
     # 3) EV/EBIT
@@ -254,6 +270,7 @@ def analyze_druckenmiller_valuation(financial_line_items: list, market_cap: floa
             details.append(f"High EV/EBIT: {ev_ebit:.2f}")
         raw_score += ev_ebit_points
     else:
+        print(f"MISSING DATA: No valid EV/EBIT because EV <= 0 or EBIT <= 0. EV: {enterprise_value}, EBIT values found: {len(ebit_values)}")
         details.append("No valid EV/EBIT because EV <= 0 or EBIT <= 0")
 
     # 4) EV/EBITDA
@@ -271,6 +288,7 @@ def analyze_druckenmiller_valuation(financial_line_items: list, market_cap: floa
             details.append(f"High EV/EBITDA: {ev_ebitda:.2f}")
         raw_score += ev_ebitda_points
     else:
+        print(f"MISSING DATA: No valid EV/EBITDA because EV <= 0 or EBITDA <= 0. EV: {enterprise_value}, EBITDA values found: {len(ebitda_values)}")
         details.append("No valid EV/EBITDA because EV <= 0 or EBITDA <= 0")
 
     # We have up to 2 points for each of the 4 metrics => 8 raw points max

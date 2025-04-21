@@ -13,44 +13,52 @@ def analyze_fundamentals(latest_metrics):
     # Check Return on Equity (ROE)
     roe = get_numeric_value(latest_metrics.get("return_on_equity"))
     print(f"DEBUG: ROE value: {roe}")
-    if roe is not None and roe > 0.15:  # 15% threshold
+    if roe is None:
+        print("MISSING DATA: Return on Equity (ROE) is missing")
+    elif roe > 0.15:  # 15% threshold
         score += 2
         reasons.append("Strong ROE above 15%")
         print(f"DEBUG: Added 2 points for strong ROE. New score: {score}")
-    elif roe is not None:
+    else:
         reasons.append(f"Weak ROE: {roe:.1%}")
         print(f"DEBUG: Weak ROE noted: {roe:.1%}")
     
     # Check Debt to Equity
     debt_to_equity = get_numeric_value(latest_metrics.get("debt_to_equity"))
     print(f"DEBUG: Debt to Equity value: {debt_to_equity}")
-    if debt_to_equity is not None and debt_to_equity <= 0.5:  # Conservative threshold
+    if debt_to_equity is None:
+        print("MISSING DATA: Debt to Equity ratio is missing")
+    elif debt_to_equity <= 0.5:  # Conservative threshold
         score += 2
         reasons.append("Conservative debt levels")
         print(f"DEBUG: Added 2 points for conservative debt. New score: {score}")
-    elif debt_to_equity is not None:
+    else:
         reasons.append(f"High debt to equity: {debt_to_equity:.1f}")
         print(f"DEBUG: High debt to equity noted: {debt_to_equity:.1f}")
     
     # Check Operating Margin
     operating_margin = get_numeric_value(latest_metrics.get("operating_margin"))
     print(f"DEBUG: Operating Margin value: {operating_margin}")
-    if operating_margin is not None and operating_margin > 0.15:  # 15% threshold
+    if operating_margin is None:
+        print("MISSING DATA: Operating Margin is missing")
+    elif operating_margin > 0.15:  # 15% threshold
         score += 2
         reasons.append("Strong operating margins")
         print(f"DEBUG: Added 2 points for strong margins. New score: {score}")
-    elif operating_margin is not None:
+    else:
         reasons.append(f"Weak operating margins: {operating_margin:.1%}")
         print(f"DEBUG: Weak operating margins noted: {operating_margin:.1%}")
     
     # Check Current Ratio
     current_ratio = get_numeric_value(latest_metrics.get("current_ratio"))
     print(f"DEBUG: Current Ratio value: {current_ratio}")
-    if current_ratio is not None and current_ratio > 1.5:  # Healthy liquidity
+    if current_ratio is None:
+        print("MISSING DATA: Current Ratio is missing")
+    elif current_ratio > 1.5:  # Healthy liquidity
         score += 1
         reasons.append("Strong liquidity position")
         print(f"DEBUG: Added 1 point for strong liquidity. New score: {score}")
-    elif current_ratio is not None:
+    else:
         reasons.append(f"Weak liquidity: {current_ratio:.1f}")
         print(f"DEBUG: Weak liquidity noted: {current_ratio:.1f}")
     
@@ -66,7 +74,7 @@ def analyze_consistency(metrics):
     """Analyze earnings consistency and growth."""
     print(f"DEBUG: Starting analyze_consistency with {len(metrics) if metrics else 0} metrics")
     if not metrics or len(metrics) < 4:
-        print("DEBUG: Insufficient metrics for consistency analysis, returning 0")
+        print("MISSING DATA: Insufficient metrics for consistency analysis (need at least 4, got {})".format(len(metrics) if metrics else 0))
         return 0
 
     score = 0
@@ -77,34 +85,43 @@ def analyze_consistency(metrics):
         print(f"DEBUG: Processing metric {i+1}/{len(metrics)}")
         net_income = item.get('net_income')
         print(f"DEBUG: Net income from metric: {net_income}")
+        if net_income is None:
+            print(f"MISSING DATA: Net income is missing for metric {i+1}")
         numeric_income = get_numeric_value(net_income)
         if numeric_income is not None:
             earnings_values.append(numeric_income)
             print(f"DEBUG: Added earnings value: {numeric_income}")
+        else:
+            print(f"MISSING DATA: Could not convert net income to numeric value for metric {i+1}")
     
     print(f"DEBUG: Collected {len(earnings_values)} earnings values: {earnings_values}")
     
-    if len(earnings_values) >= 4:
-        # Simple check: is each period's earnings bigger than the next?
-        try:
-            print("DEBUG: Checking if earnings are consistently growing")
-            earnings_growth = all(earnings_values[i] > earnings_values[i + 1] for i in range(len(earnings_values) - 1))
-            print(f"DEBUG: Earnings growth check result: {earnings_growth}")
-            if earnings_growth:
-                score += 3
-                print(f"DEBUG: Added 3 points for consistent growth. New score: {score}")
-            
-            # Calculate total growth rate from oldest to latest
-            if len(earnings_values) >= 2 and earnings_values[-1] != 0:
-                growth_rate = (earnings_values[0] - earnings_values[-1]) / abs(earnings_values[-1])
-                print(f"DEBUG: Calculated growth rate: {growth_rate:.2%}")
-                if growth_rate > 0.10:  # 10% growth
-                    score += 2
-                    print(f"DEBUG: Added 2 points for high growth rate. New score: {score}")
-        except (TypeError, ValueError) as e:
-            # If any comparison fails, return 0
-            print(f"DEBUG: Error in consistency analysis: {str(e)}")
-            return 0
+    if len(earnings_values) < 4:
+        print(f"MISSING DATA: Not enough valid earnings values for consistency analysis (need at least 4, got {len(earnings_values)})")
+        return 0
+    
+    # Simple check: is each period's earnings bigger than the next?
+    try:
+        print("DEBUG: Checking if earnings are consistently growing")
+        earnings_growth = all(earnings_values[i] > earnings_values[i + 1] for i in range(len(earnings_values) - 1))
+        print(f"DEBUG: Earnings growth check result: {earnings_growth}")
+        if earnings_growth:
+            score += 3
+            print(f"DEBUG: Added 3 points for consistent growth. New score: {score}")
+        
+        # Calculate total growth rate from oldest to latest
+        if len(earnings_values) >= 2 and earnings_values[-1] != 0:
+            growth_rate = (earnings_values[0] - earnings_values[-1]) / abs(earnings_values[-1])
+            print(f"DEBUG: Calculated growth rate: {growth_rate:.2%}")
+            if growth_rate > 0.10:  # 10% growth
+                score += 2
+                print(f"DEBUG: Added 2 points for high growth rate. New score: {score}")
+        elif len(earnings_values) >= 2 and earnings_values[-1] == 0:
+            print("MISSING DATA: Cannot calculate growth rate because latest earnings value is zero")
+    except (TypeError, ValueError) as e:
+        # If any comparison fails, return 0
+        print(f"DEBUG: Error in consistency analysis: {str(e)}")
+        return 0
     
     normalized_score = score / 5  # Normalize to 0-1 range
     print(f"DEBUG: Final score: {score}, Normalized score: {normalized_score}")
@@ -119,7 +136,7 @@ def analyze_moat(metrics: list) -> dict[str, any]:
     """
     print(f"DEBUG: Starting analyze_moat with {len(metrics) if metrics else 0} metrics")
     if not metrics or len(metrics) < 3:
-        print("DEBUG: Insufficient metrics for moat analysis, returning early")
+        print(f"MISSING DATA: Insufficient metrics for moat analysis (need at least 3, got {len(metrics) if metrics else 0})")
         return {"score": 0, "max_score": 3, "details": "Insufficient data for moat analysis"}
 
     reasoning = []
@@ -133,11 +150,15 @@ def analyze_moat(metrics: list) -> dict[str, any]:
         if roe is not None:
             historical_roes.append(roe)
             print(f"DEBUG: Added ROE value: {roe}")
+        else:
+            print(f"MISSING DATA: Return on Equity (ROE) is missing for metric {i+1}")
         
         margin = get_numeric_value(m.get("operating_margin"))
         if margin is not None:
             historical_margins.append(margin)
             print(f"DEBUG: Added margin value: {margin}")
+        else:
+            print(f"MISSING DATA: Operating Margin is missing for metric {i+1}")
 
     print(f"DEBUG: Collected {len(historical_roes)} ROE values: {historical_roes}")
     print(f"DEBUG: Collected {len(historical_margins)} margin values: {historical_margins}")
@@ -154,6 +175,8 @@ def analyze_moat(metrics: list) -> dict[str, any]:
         else:
             reasoning.append("ROE not consistently above 15%")
             print("DEBUG: ROE not consistently above 15%")
+    else:
+        print(f"MISSING DATA: Not enough ROE values for stability analysis (need at least 3, got {len(historical_roes)})")
 
     # Check for stable or improving operating margin
     if len(historical_margins) >= 3:
@@ -167,6 +190,8 @@ def analyze_moat(metrics: list) -> dict[str, any]:
         else:
             reasoning.append("Operating margin not consistently above 15%")
             print("DEBUG: Operating margin not consistently above 15%")
+    else:
+        print(f"MISSING DATA: Not enough operating margin values for stability analysis (need at least 3, got {len(historical_margins)})")
 
     # Check for consistent or improving margins
     if len(historical_margins) >= 3:
@@ -180,6 +205,8 @@ def analyze_moat(metrics: list) -> dict[str, any]:
         else:
             reasoning.append("Operating margins not consistently improving")
             print("DEBUG: Operating margins not consistently improving")
+    else:
+        print(f"MISSING DATA: Not enough operating margin values for improvement analysis (need at least 3, got {len(historical_margins)})")
 
     normalized_score = moat_score / 3  # Normalize to 0-1 range
     print(f"DEBUG: Final moat score: {moat_score}/3, Normalized score: {normalized_score}")
@@ -202,7 +229,7 @@ def analyze_management_quality(financial_line_items: list) -> dict[str, any]:
     """
     print(f"DEBUG: Starting analyze_management_quality with {len(financial_line_items) if financial_line_items else 0} items")
     if not financial_line_items:
-        print("DEBUG: No financial line items provided, returning early")
+        print("MISSING DATA: No financial line items provided for management quality analysis")
         return {"score": 0, "max_score": 2, "details": "Insufficient data for management analysis"}
 
     reasoning = []
@@ -210,11 +237,13 @@ def analyze_management_quality(financial_line_items: list) -> dict[str, any]:
 
     # Check share count stability
     share_counts = []
-    for item in financial_line_items:
+    for i, item in enumerate(financial_line_items):
         shares = get_numeric_value(item.get("outstanding_shares"))
         if shares is not None:
             share_counts.append(shares)
             print(f"DEBUG: Added share count: {shares}")
+        else:
+            print(f"MISSING DATA: Outstanding shares data is missing for item {i+1}")
 
     print(f"DEBUG: Collected {len(share_counts)} share counts: {share_counts}")
 
@@ -229,14 +258,18 @@ def analyze_management_quality(financial_line_items: list) -> dict[str, any]:
         else:
             reasoning.append("Share count increasing (potential dilution)")
             print("DEBUG: Share count increasing noted")
+    else:
+        print(f"MISSING DATA: Not enough share count data for stability analysis (need at least 3, got {len(share_counts)})")
 
     # Check dividend track record
     dividend_yields = []
-    for item in financial_line_items:
+    for i, item in enumerate(financial_line_items):
         yield_val = get_numeric_value(item.get("dividend_yield"))
         if yield_val is not None:
             dividend_yields.append(yield_val)
             print(f"DEBUG: Added dividend yield: {yield_val}")
+        else:
+            print(f"MISSING DATA: Dividend yield data is missing for item {i+1}")
 
     print(f"DEBUG: Collected {len(dividend_yields)} dividend yields: {dividend_yields}")
 
@@ -251,6 +284,8 @@ def analyze_management_quality(financial_line_items: list) -> dict[str, any]:
         else:
             reasoning.append("Dividend yield not consistently stable")
             print("DEBUG: Dividend yield not consistently stable")
+    else:
+        print(f"MISSING DATA: Not enough dividend yield data for stability analysis (need at least 3, got {len(dividend_yields)})")
 
     normalized_score = mgmt_score / 2  # Normalize to 0-1 range
     print(f"DEBUG: Final management score: {mgmt_score}/2, Normalized score: {normalized_score}")
@@ -268,7 +303,7 @@ def calculate_owner_earnings(latest_metrics: dict) -> dict[str, any]:
     Owner Earnings = Net Income + Depreciation - Maintenance CapEx"""
     print(f"DEBUG: Starting calculate_owner_earnings with metrics: {latest_metrics}")
     if not latest_metrics:
-        print("DEBUG: No metrics available for owner earnings calculation, returning early")
+        print("MISSING DATA: No metrics available for owner earnings calculation")
         return {"owner_earnings": None, "details": ["No metrics available for owner earnings calculation"]}
 
     # Get the raw metrics first for debugging
@@ -289,10 +324,18 @@ def calculate_owner_earnings(latest_metrics: dict) -> dict[str, any]:
     print(f"DEBUG: Processed Depreciation: {depreciation}")
     print(f"DEBUG: Processed Maintenance CapEx: {maintenance_capex}")
 
-    # Ensure all values are floats and not None
-    if None in (net_income, depreciation, maintenance_capex):
-        print("DEBUG: Missing required metrics for owner earnings calculation")
-        return {"owner_earnings": None, "details": ["Missing required metrics for owner earnings calculation"]}
+    # Check for missing data
+    missing_metrics = []
+    if net_income is None:
+        missing_metrics.append("Net Income")
+    if depreciation is None:
+        missing_metrics.append("Depreciation")
+    if maintenance_capex is None:
+        missing_metrics.append("Maintenance CapEx")
+    
+    if missing_metrics:
+        print(f"MISSING DATA: The following metrics are missing for owner earnings calculation: {', '.join(missing_metrics)}")
+        return {"owner_earnings": None, "details": [f"Missing required metrics for owner earnings calculation: {', '.join(missing_metrics)}"]}
 
     try:
         owner_earnings = float(net_income) + float(depreciation) - float(maintenance_capex)
@@ -316,7 +359,7 @@ def calculate_intrinsic_value(latest_metrics: dict) -> dict[str, any]:
     """Calculate intrinsic value using DCF with owner earnings."""
     print(f"DEBUG: Starting calculate_intrinsic_value with metrics: {latest_metrics}")
     if not latest_metrics:
-        print("DEBUG: No metrics available for intrinsic value calculation, returning early")
+        print("MISSING DATA: No metrics available for intrinsic value calculation")
         return {"intrinsic_value": None, "details": ["No metrics available for intrinsic value calculation"]}
 
     # Get owner earnings first
@@ -324,7 +367,7 @@ def calculate_intrinsic_value(latest_metrics: dict) -> dict[str, any]:
     owner_earnings = owner_earnings_result.get("owner_earnings")
     
     if owner_earnings is None:
-        print("DEBUG: Could not calculate owner earnings, returning early")
+        print("MISSING DATA: Could not calculate owner earnings, which is required for intrinsic value calculation")
         return {"intrinsic_value": None, "details": ["Could not calculate owner earnings"]}
 
     # Get shares outstanding
@@ -332,7 +375,7 @@ def calculate_intrinsic_value(latest_metrics: dict) -> dict[str, any]:
     print(f"DEBUG: Shares outstanding: {shares_outstanding}")
 
     if not shares_outstanding:
-        print("DEBUG: Missing shares outstanding data, returning early")
+        print("MISSING DATA: Shares outstanding data is missing, which is required for intrinsic value calculation")
         return {"intrinsic_value": None, "details": ["Missing shares outstanding data"]}
 
     # Simple DCF calculation

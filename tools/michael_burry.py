@@ -26,6 +26,10 @@ def analyze_value(metrics, line_items, market_cap):
         else:
             details.append(f"Low FCF yield {fcf_yield:.1%}")
     else:
+        if fcf is None:
+            print("WARNING: Free cash flow data is missing")
+        if not market_cap:
+            print("WARNING: Market cap data is missing")
         details.append("FCF data unavailable")
 
     # EV/EBIT (from financial metrics)
@@ -41,8 +45,10 @@ def analyze_value(metrics, line_items, market_cap):
             else:
                 details.append(f"High EV/EBIT {ev_ebit:.1f}")
         else:
+            print("WARNING: EV/EBIT data is missing")
             details.append("EV/EBIT data unavailable")
     else:
+        print("WARNING: Financial metrics data is missing")
         details.append("Financial metrics unavailable")
 
     return {"score": score, "max_score": max_score, "details": "; ".join(details)}
@@ -71,6 +77,7 @@ def analyze_balance_sheet(metrics, line_items):
         else:
             details.append(f"High leverage D/E {debt_to_equity:.2f}")
     else:
+        print("WARNING: Debt-to-equity data is missing")
         details.append("Debt‑to‑equity data unavailable")
 
     # Quick liquidity sanity check (cash vs total debt)
@@ -84,7 +91,14 @@ def analyze_balance_sheet(metrics, line_items):
             else:
                 details.append("Net debt position")
         else:
+            if cash is None:
+                print("WARNING: Cash and equivalents data is missing")
+            if total_debt is None:
+                print("WARNING: Total debt data is missing")
             details.append("Cash/debt data unavailable")
+    else:
+        print("WARNING: Latest line item data is missing")
+        details.append("Cash/debt data unavailable")
 
     return {"score": score, "max_score": max_score, "details": "; ".join(details)}
 
@@ -99,6 +113,7 @@ def analyze_insider_activity(insider_trades):
     details: list[str] = []
 
     if not insider_trades:
+        print("WARNING: Insider trade data is missing")
         details.append("No insider trade data")
         return {"score": score, "max_score": max_score, "details": "; ".join(details)}
 
@@ -161,6 +176,7 @@ def analyze_contrarian_sentiment(news):
     score = 0
     details: list[str] = []
     if not news:
+        print("WARNING: News data is missing")
         details.append("No recent news")
         return {"score": score, "max_score": max_score, "details": "; ".join(details)}
 

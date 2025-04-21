@@ -12,6 +12,7 @@ def analyze_disruptive_potential(metrics: list, financial_line_items: list) -> d
     details = []
 
     if not metrics or not financial_line_items:
+        print("MISSING DATA: No metrics or financial line items provided")
         return {
             "score": 0,
             "details": "Insufficient data to analyze disruptive potential"
@@ -43,6 +44,7 @@ def analyze_disruptive_potential(metrics: list, financial_line_items: list) -> d
             score += 1
             details.append(f"Moderate revenue growth: {(latest_growth*100):.1f}%")
     else:
+        print(f"MISSING DATA: Insufficient revenue data for growth analysis. Found {len(revenues)} periods, need at least 3.")
         details.append("Insufficient revenue data for growth analysis")
 
     # 2. Gross Margin Analysis - Check for expanding margins
@@ -61,6 +63,7 @@ def analyze_disruptive_potential(metrics: list, financial_line_items: list) -> d
             score += 2
             details.append(f"High gross margin: {(gross_margins[-1]*100):.1f}%")
     else:
+        print(f"MISSING DATA: Insufficient gross margin data. Found {len(gross_margins)} periods, need at least 2.")
         details.append("Insufficient gross margin data")
 
     # 3. Operating Leverage Analysis
@@ -79,6 +82,7 @@ def analyze_disruptive_potential(metrics: list, financial_line_items: list) -> d
             score += 2
             details.append("Positive operating leverage: Revenue growing faster than expenses")
     else:
+        print(f"MISSING DATA: Insufficient data for operating leverage analysis. Found {len(revenues)} revenue periods and {len(operating_expenses)} operating expense periods, need at least 2 of each.")
         details.append("Insufficient data for operating leverage analysis")
 
     # 4. R&D Investment Analysis
@@ -95,6 +99,7 @@ def analyze_disruptive_potential(metrics: list, financial_line_items: list) -> d
             score += 1
             details.append(f"Some R&D investment: {(rd_intensity*100):.1f}% of revenue")
     else:
+        print("MISSING DATA: No R&D data available or insufficient revenue data for R&D intensity calculation")
         details.append("No R&D data available")
 
     # Normalize score to be out of 5
@@ -123,6 +128,7 @@ def analyze_innovation_growth(metrics: list, financial_line_items: list) -> dict
     details = []
 
     if not metrics or not financial_line_items:
+        print("MISSING DATA: No metrics or financial line items provided for innovation growth analysis")
         return {
             "score": 0,
             "details": "Insufficient data to analyze innovation-driven growth"
@@ -153,6 +159,7 @@ def analyze_innovation_growth(metrics: list, financial_line_items: list) -> dict
             score += 2
             details.append(f"Increasing R&D intensity: {(rd_intensity_end*100):.1f}% vs {(rd_intensity_start*100):.1f}%")
     else:
+        print(f"MISSING DATA: Insufficient R&D data for trend analysis. Found {len(rd_expenses)} R&D periods and {len(revenues)} revenue periods, need at least 2 of each.")
         details.append("Insufficient R&D data for trend analysis")
 
     # 2. Free Cash Flow Analysis
@@ -172,6 +179,7 @@ def analyze_innovation_growth(metrics: list, financial_line_items: list) -> dict
             score += 1
             details.append("Moderately consistent FCF, adequate innovation funding capacity")
     else:
+        print(f"MISSING DATA: Insufficient FCF data for analysis. Found {len(fcf_vals)} periods, need at least 2.")
         details.append("Insufficient FCF data for analysis")
 
     # 3. Operating Efficiency Analysis
@@ -190,6 +198,7 @@ def analyze_innovation_growth(metrics: list, financial_line_items: list) -> dict
             score += 1
             details.append("Improving operating efficiency")
     else:
+        print(f"MISSING DATA: Insufficient operating margin data. Found {len(op_margin_vals)} periods, need at least 2.")
         details.append("Insufficient operating margin data")
 
     # 4. Capital Allocation Analysis
@@ -205,6 +214,7 @@ def analyze_innovation_growth(metrics: list, financial_line_items: list) -> dict
             score += 1
             details.append("Moderate investment in growth infrastructure")
     else:
+        print(f"MISSING DATA: Insufficient CAPEX data. Found {len(capex)} periods, need at least 2, or missing revenue data.")
         details.append("Insufficient CAPEX data")
 
     # 5. Growth Reinvestment Analysis
@@ -219,6 +229,7 @@ def analyze_innovation_growth(metrics: list, financial_line_items: list) -> dict
             score += 1
             details.append("Moderate focus on reinvestment over dividends")
     else:
+        print(f"MISSING DATA: Insufficient dividend data. Found {len(dividends)} periods, or missing FCF data.")
         details.append("Insufficient dividend data")
 
     # Normalize score to be out of 5
@@ -240,6 +251,7 @@ def analyze_cathie_wood_valuation(financial_line_items: list, market_cap: float)
     company's ability to capture a sizable portion.
     """
     if not financial_line_items or market_cap is None or market_cap <= 0:
+        print("MISSING DATA: No financial line items provided or invalid market cap")
         return {
             "score": 0,
             "details": "Insufficient data for valuation or invalid market cap"
@@ -249,6 +261,7 @@ def analyze_cathie_wood_valuation(financial_line_items: list, market_cap: float)
     fcf = latest.get('free_cash_flow') if latest.get('free_cash_flow') else 0
 
     if fcf <= 0:
+        print(f"MISSING DATA: No positive FCF for valuation; FCF = {fcf}")
         return {
             "score": 0,
             "details": f"No positive FCF for valuation; FCF = {fcf}",

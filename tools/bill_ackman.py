@@ -8,6 +8,7 @@ def analyze_business_quality(metrics: list, financial_line_items: list) -> dict:
     details = []
     
     if not metrics or not financial_line_items:
+        print("MISSING DATA: No metrics or financial_line_items provided for business quality analysis")
         return {
             "score": 0,
             "details": "Insufficient data to analyze business quality"
@@ -28,6 +29,7 @@ def analyze_business_quality(metrics: list, financial_line_items: list) -> dict:
         else:
             details.append("Revenue did not grow significantly or data insufficient.")
     else:
+        print(f"MISSING DATA: Not enough revenue data for multi-period trend. Found {len(revenues)} data points.")
         details.append("Not enough revenue data for multi-period trend.")
     
     # 2. Operating margin and free cash flow consistency
@@ -42,6 +44,7 @@ def analyze_business_quality(metrics: list, financial_line_items: list) -> dict:
         else:
             details.append("Operating margin not consistently above 15%.")
     else:
+        print("MISSING DATA: No operating margin data available across periods")
         details.append("No operating margin data across periods.")
     
     if fcf_vals:
@@ -52,6 +55,7 @@ def analyze_business_quality(metrics: list, financial_line_items: list) -> dict:
         else:
             details.append("Free cash flow not consistently positive.")
     else:
+        print("MISSING DATA: No free cash flow data available across periods")
         details.append("No free cash flow data across periods.")
     
     # 3. Return on Equity (ROE) check from the latest metrics
@@ -63,6 +67,7 @@ def analyze_business_quality(metrics: list, financial_line_items: list) -> dict:
     elif roe:
         details.append(f"ROE of {roe:.1%} is moderate.")
     else:
+        print("MISSING DATA: Return on Equity (ROE) data not available")
         details.append("ROE data not available.")
     
     # 4. (Optional) Brand Intangible (if intangible_assets are fetched)
@@ -89,6 +94,7 @@ def analyze_financial_discipline(metrics: list, financial_line_items: list) -> d
     details = []
     
     if not metrics or not financial_line_items:
+        print("MISSING DATA: No metrics or financial_line_items provided for financial discipline analysis")
         return {
             "score": 0,
             "details": "Insufficient data to analyze financial discipline"
@@ -107,6 +113,7 @@ def analyze_financial_discipline(metrics: list, financial_line_items: list) -> d
         else:
             details.append(f"High debt level with D/E ratio of {debt_to_equity:.2f}")
     else:
+        print("MISSING DATA: Debt to equity ratio not available")
         details.append("Debt to equity data not available")
     
     # 2. Working Capital Management
@@ -121,6 +128,7 @@ def analyze_financial_discipline(metrics: list, financial_line_items: list) -> d
         else:
             details.append(f"Tight working capital with current ratio of {current_ratio:.2f}")
     else:
+        print("MISSING DATA: Current ratio not available")
         details.append("Current ratio data not available")
     
     # 3. Cost Control - Check operating margin trend
@@ -136,6 +144,7 @@ def analyze_financial_discipline(metrics: list, financial_line_items: list) -> d
         else:
             details.append("Operating margins not improving")
     else:
+        print(f"MISSING DATA: Insufficient operating margin data. Found {len(op_margins)} data points.")
         details.append("Insufficient operating margin data")
     
     # 4. Capital Allocation - Check ROIC trend
@@ -151,6 +160,7 @@ def analyze_financial_discipline(metrics: list, financial_line_items: list) -> d
         else:
             details.append(f"Subpar capital allocation with {avg_roic:.1%} avg ROIC")
     else:
+        print("MISSING DATA: Return on Invested Capital (ROIC) data not available")
         details.append("ROIC data not available")
     
     # Normalize score to 0-10
@@ -174,6 +184,7 @@ def analyze_activism_potential(metrics: list, financial_line_items: list) -> dic
     details = []
     
     if not metrics or not financial_line_items:
+        print("MISSING DATA: No metrics or financial_line_items provided for activism potential analysis")
         return {
             "score": 0,
             "details": "Insufficient data to analyze activism potential"
@@ -190,6 +201,7 @@ def analyze_activism_potential(metrics: list, financial_line_items: list) -> dic
             score += 1
             details.append(f"Moderate operating margin of {op_margin:.1%} might have room for improvement")
     else:
+        print("MISSING DATA: Operating margin not available")
         details.append("Operating margin data not available")
     
     # 2. Balance Sheet Efficiency
@@ -202,6 +214,7 @@ def analyze_activism_potential(metrics: list, financial_line_items: list) -> dic
             score += 1
             details.append(f"Elevated current ratio of {current_ratio:.1f} might indicate some balance sheet inefficiency")
     else:
+        print("MISSING DATA: Current ratio not available")
         details.append("Current ratio data not available")
     
     # 3. Capital Allocation Efficiency
@@ -214,6 +227,7 @@ def analyze_activism_potential(metrics: list, financial_line_items: list) -> dic
             score += 1
             details.append(f"Moderate ROIC of {roic:.1%} might have room for improvement")
     else:
+        print("MISSING DATA: Return on Invested Capital (ROIC) not available")
         details.append("ROIC data not available")
     
     # 4. Dividend and Buyback Policy
@@ -226,6 +240,7 @@ def analyze_activism_potential(metrics: list, financial_line_items: list) -> dic
             score += 1
             details.append("Moderate capital return policy might have room for enhancement")
     else:
+        print("MISSING DATA: Payout ratio not available")
         details.append("Payout ratio data not available")
     
     # Normalize score to 0-10
@@ -256,12 +271,22 @@ def analyze_valuation(metrics, financial_line_items):
     
     # Get the free cash flow
     fcf = latest.get('free_cash_flow', 0)
+    if fcf == 0:
+        print("MISSING DATA: Free cash flow not available or zero")
     
     # Get enterprise value components
-    market_cap = latest.get('outstanding_shares', 0) * latest.get('stock_price', 0)
+    outstanding_shares = latest.get('outstanding_shares', 0)
+    stock_price = latest.get('stock_price', 0)
+    if outstanding_shares == 0 or stock_price == 0:
+        print("MISSING DATA: Outstanding shares or stock price not available")
+    
+    market_cap = outstanding_shares * stock_price
     total_debt = latest.get('total_liabilities', 0)
     cash = latest.get('cash', 0)
     enterprise_value = market_cap + total_debt - cash
+    
+    if enterprise_value <= 0:
+        print("MISSING DATA: Enterprise value calculation resulted in zero or negative value")
     
     # Calculate key ratios
     if enterprise_value > 0:
@@ -274,7 +299,9 @@ def analyze_valuation(metrics, financial_line_items):
     
     # Check P/E ratio
     pe_ratio = latest.get('pe_ratio', 0)
-    if 0 < pe_ratio < 15:
+    if pe_ratio == 0:
+        print("MISSING DATA: P/E ratio not available or zero")
+    elif 0 < pe_ratio < 15:
         score += 2
         reasons.append(f"Attractive P/E ratio: {pe_ratio:.1f}x")
     elif pe_ratio > 25:
@@ -282,13 +309,17 @@ def analyze_valuation(metrics, financial_line_items):
     
     # Check price to book ratio
     price_to_book = latest.get('price_to_book', 0)
-    if 0 < price_to_book < 1.5:
+    if price_to_book == 0:
+        print("MISSING DATA: Price to book ratio not available or zero")
+    elif 0 < price_to_book < 1.5:
         score += 2
         reasons.append(f"Trading below 1.5x book value: {price_to_book:.1f}x")
     
     # Check dividend yield
     dividend_yield = latest.get('dividend_yield', 0)
-    if dividend_yield > 3:
+    if dividend_yield == 0:
+        print("MISSING DATA: Dividend yield not available or zero")
+    elif dividend_yield > 3:
         score += 1
         reasons.append(f"Attractive dividend yield: {dividend_yield:.1f}%")
     

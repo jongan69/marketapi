@@ -1,4 +1,5 @@
 import datetime
+import logging
 from tools.yf_tools import (
     fetch_and_cache_stock_tickers, get_price_data, get_market_cap, stock_price, stock_info, 
     insider_trades, financial_metrics, company_news, 
@@ -12,9 +13,11 @@ from tools.yf_tools import (
     get_total_assets, get_total_liabilities, get_current_assets,
     get_current_liabilities, get_cash, get_inventory,
     get_accounts_receivable, get_accounts_payable, get_shareholders_equity,
-    get_revenue, get_net_income, get_eps, get_gross_profit, get_operating_income
+    get_revenue, get_net_income, get_eps, get_gross_profit, get_operating_income,
+    prepare_financial_line_items
 )
 import pandas as pd
+import numpy as np
 
 from tools.ben_graham import analyze_earnings_stability, analyze_financial_strength, analyze_valuation_graham
 from tools.bill_ackman import analyze_business_quality, analyze_financial_discipline, analyze_activism_potential, analyze_valuation
@@ -29,6 +32,128 @@ from tools.valuation import calculate_intrinsic_value
 from tools.technicals import calculate_trend_signals
 from tools.utils import df_to_list
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Constants for validation
+MIN_MARKET_CAP = 1_000_000  # $1M
+MAX_MARKET_CAP = 3_000_000_000_000  # $3T
+MIN_POSITIVE_VALUE = 1e-10  # Small positive number to avoid division by zero
+MAX_REASONABLE_PE = 1000  # Maximum reasonable P/E ratio
+MAX_REASONABLE_EV_RATIO = 100  # Maximum reasonable EV/EBIT or EV/EBITDA
+
+def safe_divide(numerator, denominator, default=None):
+    """Safely perform division with validation."""
+    # Handle pandas Series
+    if isinstance(numerator, pd.Series):
+        numerator = numerator.iloc[0] if not numerator.empty else None
+    if isinstance(denominator, pd.Series):
+        denominator = denominator.iloc[0] if not denominator.empty else None
+        
+    if denominator is None or (isinstance(denominator, (int, float)) and abs(denominator) < MIN_POSITIVE_VALUE):
+        return default
+    return numerator / denominator
+
+def validate_financial_ratio(ratio, ratio_name, min_value=None, max_value=None):
+    """Validate a financial ratio and return None if invalid."""
+    # Handle pandas Series
+    if isinstance(ratio, pd.Series):
+        ratio = ratio.iloc[0] if not ratio.empty else None
+        
+    if ratio is None:
+        return None
+    
+    if min_value is not None and ratio < min_value:
+        logger.warning(f"{ratio_name} below minimum threshold: {ratio}")
+        return None
+    
+    if max_value is not None and ratio > max_value:
+        logger.warning(f"{ratio_name} above maximum threshold: {ratio}")
+        return None
+    
+    return ratio
+
+def calculate_financial_ratios(metrics):
+    """Calculate financial ratios with proper validation."""
+    print(f"DEBUG: Calculating financial ratios using {metrics}")
+    ratios = {}
+    
+    # Helper function to safely get metric value
+    def get_metric_value(metric_name):
+        value = metrics.get(metric_name)
+        if isinstance(value, pd.Series):
+            return value.iloc[0] if not value.empty else None
+        return value
+    
+    # P/E Ratio
+    eps = get_metric_value('eps')
+    stock_price = get_metric_value('stock_price')
+    if eps is not None and stock_price is not None:
+        pe_ratio = safe_divide(stock_price, eps)
+        pe_ratio = validate_financial_ratio(pe_ratio, "P/E Ratio", min_value=0, max_value=MAX_REASONABLE_PE)
+        if pe_ratio is not None:
+            ratios['pe_ratio'] = pe_ratio
+    
+    # P/FCF Ratio
+    free_cash_flow = get_metric_value('free_cash_flow')
+    outstanding_shares = get_metric_value('outstanding_shares')
+    if free_cash_flow is not None and outstanding_shares is not None:
+        fcf_per_share = safe_divide(free_cash_flow, outstanding_shares)
+        if fcf_per_share is not None and fcf_per_share > 0 and stock_price is not None:
+            pfcf_ratio = safe_divide(stock_price, fcf_per_share)
+            pfcf_ratio = validate_financial_ratio(pfcf_ratio, "P/FCF Ratio", min_value=0, max_value=MAX_REASONABLE_PE)
+            if pfcf_ratio is not None:
+                ratios['pfcf_ratio'] = pfcf_ratio
+    
+    # EV/EBIT
+    total_liabilities = get_metric_value('total_liabilities')
+    shareholders_equity = get_metric_value('shareholders_equity')
+    if total_liabilities is not None and shareholders_equity is not None:
+        enterprise_value = total_liabilities + shareholders_equity
+        operating_income = get_metric_value('operating_income')
+        if operating_income is not None:
+            ev_ebit = safe_divide(enterprise_value, operating_income)
+            ev_ebit = validate_financial_ratio(ev_ebit, "EV/EBIT", min_value=0, max_value=MAX_REASONABLE_EV_RATIO)
+            if ev_ebit is not None:
+                ratios['ev_ebit'] = ev_ebit
+        
+        # EV/EBITDA
+        ebitda = get_metric_value('ebitda')
+        if ebitda is not None:
+            ev_ebitda = safe_divide(enterprise_value, ebitda)
+            ev_ebitda = validate_financial_ratio(ev_ebitda, "EV/EBITDA", min_value=0, max_value=MAX_REASONABLE_EV_RATIO)
+            if ev_ebitda is not None:
+                ratios['ev_ebitda'] = ev_ebitda
+    
+    # Debt to Equity
+    if total_liabilities is not None and shareholders_equity is not None:
+        debt_to_equity = safe_divide(total_liabilities, shareholders_equity)
+        debt_to_equity = validate_financial_ratio(debt_to_equity, "Debt to Equity", min_value=0)
+        if debt_to_equity is not None:
+            ratios['debt_to_equity'] = debt_to_equity
+    
+    # Current Ratio
+    current_assets = get_metric_value('current_assets')
+    current_liabilities = get_metric_value('current_liabilities')
+    if current_assets is not None and current_liabilities is not None:
+        current_ratio = safe_divide(current_assets, current_liabilities)
+        current_ratio = validate_financial_ratio(current_ratio, "Current Ratio", min_value=0)
+        if current_ratio is not None:
+            ratios['current_ratio'] = current_ratio
+    
+    # Return on Equity
+    net_income = get_metric_value('net_income')
+    if net_income is not None and shareholders_equity is not None:
+        roe = safe_divide(net_income, shareholders_equity)
+        roe = validate_financial_ratio(roe, "ROE", min_value=-1, max_value=1)
+        if roe is not None:
+            ratios['roe'] = roe
+    
+    return ratios
 
 def get_financial_data(ticker):
     """Get financial data for a stock ticker."""
@@ -38,6 +163,10 @@ def get_financial_data(ticker):
         if not metrics:
             return None
             
+        # Calculate and validate financial ratios
+        ratios = calculate_financial_ratios(metrics)
+        metrics.update(ratios)
+        
         # Get balance sheet data directly
         balance_sheet_data = balance_sheet(ticker)
         if balance_sheet_data is not None and not balance_sheet_data.empty:
@@ -49,7 +178,7 @@ def get_financial_data(ticker):
                     elif 'Total Liabilities' in balance_sheet_data.index:
                         metrics['total_liabilities'] = balance_sheet_data.loc['Total Liabilities']
                 except Exception as e:
-                    print(f"Error getting total liabilities from balance sheet: {str(e)}")
+                    logger.error(f"Error getting total liabilities from balance sheet: {str(e)}")
             
             if metrics.get('current_assets') is None or (isinstance(metrics['current_assets'], pd.Series) and metrics['current_assets'].empty):
                 try:
@@ -58,7 +187,7 @@ def get_financial_data(ticker):
                     elif 'Current Assets' in balance_sheet_data.index:
                         metrics['current_assets'] = balance_sheet_data.loc['Current Assets']
                 except Exception as e:
-                    print(f"Error getting current assets from balance sheet: {str(e)}")
+                    logger.error(f"Error getting current assets from balance sheet: {str(e)}")
             
             if metrics.get('current_liabilities') is None or (isinstance(metrics['current_liabilities'], pd.Series) and metrics['current_liabilities'].empty):
                 try:
@@ -67,7 +196,7 @@ def get_financial_data(ticker):
                     elif 'Current Liabilities' in balance_sheet_data.index:
                         metrics['current_liabilities'] = balance_sheet_data.loc['Current Liabilities']
                 except Exception as e:
-                    print(f"Error getting current liabilities from balance sheet: {str(e)}")
+                    logger.error(f"Error getting current liabilities from balance sheet: {str(e)}")
             
             if metrics.get('cash') is None or (isinstance(metrics['cash'], pd.Series) and metrics['cash'].empty):
                 try:
@@ -76,7 +205,7 @@ def get_financial_data(ticker):
                     elif 'Cash And Cash Equivalents' in balance_sheet_data.index:
                         metrics['cash'] = balance_sheet_data.loc['Cash And Cash Equivalents']
                 except Exception as e:
-                    print(f"Error getting cash from balance sheet: {str(e)}")
+                    logger.error(f"Error getting cash from balance sheet: {str(e)}")
             
             if metrics.get('accounts_receivable') is None or (isinstance(metrics['accounts_receivable'], pd.Series) and metrics['accounts_receivable'].empty):
                 try:
@@ -85,7 +214,7 @@ def get_financial_data(ticker):
                     elif 'Accounts Receivable' in balance_sheet_data.index:
                         metrics['accounts_receivable'] = balance_sheet_data.loc['Accounts Receivable']
                 except Exception as e:
-                    print(f"Error getting accounts receivable from balance sheet: {str(e)}")
+                    logger.error(f"Error getting accounts receivable from balance sheet: {str(e)}")
             
             if metrics.get('shareholders_equity') is None or (isinstance(metrics['shareholders_equity'], pd.Series) and metrics['shareholders_equity'].empty):
                 try:
@@ -94,7 +223,7 @@ def get_financial_data(ticker):
                     elif 'Stockholders Equity' in balance_sheet_data.index:
                         metrics['shareholders_equity'] = balance_sheet_data.loc['Stockholders Equity']
                 except Exception as e:
-                    print(f"Error getting shareholders equity from balance sheet: {str(e)}")
+                    logger.error(f"Error getting shareholders equity from balance sheet: {str(e)}")
             
             # Try to get depreciation and amortization
             try:
@@ -111,9 +240,12 @@ def get_financial_data(ticker):
                         metrics['maintenance_capex'] = balance_sheet_data.loc[key]
                         break
             except Exception as e:
-                print(f"Error getting depreciation/amortization: {str(e)}")
+                logger.error(f"Error getting depreciation/amortization: {str(e)}")
             
             # If still missing, try the individual getter functions as fallback
+            if metrics.get('total_assets') is None or (isinstance(metrics['total_assets'], pd.Series) and metrics['total_assets'].empty):
+                metrics['total_assets'] = get_total_assets(ticker)
+                
             if metrics.get('total_liabilities') is None or (isinstance(metrics['total_liabilities'], pd.Series) and metrics['total_liabilities'].empty):
                 metrics['total_liabilities'] = get_total_liabilities(ticker)
                 
@@ -131,6 +263,15 @@ def get_financial_data(ticker):
                 
             if metrics.get('shareholders_equity') is None or (isinstance(metrics['shareholders_equity'], pd.Series) and metrics['shareholders_equity'].empty):
                 metrics['shareholders_equity'] = get_shareholders_equity(ticker)
+                
+            if metrics.get('return_on_equity') is None or (isinstance(metrics['return_on_equity'], pd.Series) and metrics['return_on_equity'].empty):
+                metrics['return_on_equity'] = calculate_roe(ticker)
+            
+            if metrics.get('debt_to_equity') is None or (isinstance(metrics['debt_to_equity'], pd.Series) and metrics['debt_to_equity'].empty):
+                metrics['debt_to_equity'] = calculate_debt_to_equity(ticker)
+            
+            if metrics.get('research_and_development') is None or (isinstance(metrics['research_and_development'], pd.Series) and metrics['research_and_development'].empty):
+                metrics['research_and_development'] = get_research_and_development(ticker)
         
         # Get cash flow data for depreciation and capex
         cash_flow_data = cash_flow(ticker)
@@ -152,80 +293,7 @@ def get_financial_data(ticker):
                             metrics['maintenance_capex'] = cash_flow_data.loc[key]
                             break
             except Exception as e:
-                print(f"Error getting cash flow data: {str(e)}")
-        
-        # Calculate financial ratios using yf_tools functions
-        try:
-            # Get all financial ratios at once
-            financial_ratios = calculate_financial_ratios(ticker)
-            for ratio_name, ratio_value in financial_ratios.items():
-                if isinstance(ratio_value, pd.Series) and not ratio_value.empty:
-                    metrics[ratio_name.lower().replace(' ', '_')] = ratio_value
-            
-            # Get individual ratios as backup
-            roe = calculate_roe(ticker)
-            if isinstance(roe, pd.Series) and not roe.empty:
-                metrics['roe'] = roe
-            
-            debt_to_equity = calculate_debt_to_equity(ticker)
-            if isinstance(debt_to_equity, pd.Series) and not debt_to_equity.empty:
-                metrics['debt_to_equity'] = debt_to_equity
-            
-            current_ratio = calculate_current_ratio(ticker)
-            if isinstance(current_ratio, pd.Series) and not current_ratio.empty:
-                metrics['current_ratio'] = current_ratio
-        except Exception as e:
-            print(f"Error calculating financial ratios: {str(e)}")
-        
-        # Calculate earnings growth if missing
-        if metrics.get('earnings_growth') is None and metrics.get('net_income') is not None:
-            if isinstance(metrics['net_income'], pd.Series):
-                metrics['earnings_growth'] = metrics['net_income'].pct_change()
-        
-        # Fix dividend yield calculation if it seems incorrect
-        if metrics.get('dividend_yield') is not None:
-            if isinstance(metrics['dividend_yield'], pd.Series):
-                if not metrics['dividend_yield'].empty and metrics['dividend_yield'].iloc[0] > 100:
-                    metrics['dividend_yield'] = metrics['dividend_yield'] / 100
-            elif metrics['dividend_yield'] > 100:
-                metrics['dividend_yield'] = metrics['dividend_yield'] / 100
-        
-        # Calculate P/E ratio if we have the data
-        if metrics.get('eps') is not None and metrics.get('stock_price') is not None:
-            if isinstance(metrics['eps'], pd.Series):
-                if not metrics['eps'].empty and metrics['eps'].iloc[0] > 0:
-                    metrics['pe_ratio'] = metrics['stock_price'] / metrics['eps']
-            elif metrics['eps'] > 0:
-                metrics['pe_ratio'] = metrics['stock_price'] / metrics['eps']
-        
-        # Calculate P/FCF ratio if we have the data
-        if metrics.get('free_cash_flow') is not None and metrics.get('outstanding_shares') is not None:
-            if isinstance(metrics['free_cash_flow'], pd.Series):
-                if not metrics['free_cash_flow'].empty and metrics['free_cash_flow'].iloc[0] > 0:
-                    fcf_per_share = metrics['free_cash_flow'] / metrics['outstanding_shares']
-                    if fcf_per_share.iloc[0] > 0 and metrics.get('stock_price') is not None:
-                        metrics['pfcf_ratio'] = metrics['stock_price'] / fcf_per_share
-            elif metrics['free_cash_flow'] > 0:
-                fcf_per_share = metrics['free_cash_flow'] / metrics['outstanding_shares']
-                if fcf_per_share > 0 and metrics.get('stock_price') is not None:
-                    metrics['pfcf_ratio'] = metrics['stock_price'] / fcf_per_share
-        
-        # Calculate EV/EBIT and EV/EBITDA if we have the data
-        if metrics.get('total_liabilities') is not None and metrics.get('shareholders_equity') is not None:
-            enterprise_value = metrics['total_liabilities'] + metrics['shareholders_equity']
-            if metrics.get('operating_income') is not None:
-                if isinstance(metrics['operating_income'], pd.Series):
-                    if not metrics['operating_income'].empty and metrics['operating_income'].iloc[0] > 0:
-                        metrics['ev_ebit'] = enterprise_value / metrics['operating_income']
-                elif metrics['operating_income'] > 0:
-                    metrics['ev_ebit'] = enterprise_value / metrics['operating_income']
-            
-            if metrics.get('ebitda') is not None:
-                if isinstance(metrics['ebitda'], pd.Series):
-                    if not metrics['ebitda'].empty and metrics['ebitda'].iloc[0] > 0:
-                        metrics['ev_ebitda'] = enterprise_value / metrics['ebitda']
-                elif metrics['ebitda'] > 0:
-                    metrics['ev_ebitda'] = enterprise_value / metrics['ebitda']
+                logger.error(f"Error getting cash flow data: {str(e)}")
         
         # Extract the latest values from pandas Series
         latest_metrics = {}
@@ -262,39 +330,184 @@ def get_financial_data(ticker):
             "historical_metrics": historical_metrics
         }
     except Exception as e:
-        print(f"Error getting financial data for {ticker}: {str(e)}")
+        logger.error(f"Error getting financial data for {ticker}: {str(e)}")
         return None
 
 
+def calculate_earnings_growth_rate(historical_metrics):
+    """Calculate the earnings growth rate from historical metrics."""
+    if not historical_metrics or len(historical_metrics) < 2:
+        return None, None
+    
+    # Extract net income values in chronological order
+    net_incomes = []
+    for metric in historical_metrics:
+        if 'net_income' in metric and metric['net_income'] is not None:
+            net_incomes.append(metric['net_income'])
+    
+    if len(net_incomes) < 2:
+        return None, None
+    
+    # Calculate year-over-year growth rates
+    growth_rates = []
+    for i in range(1, len(net_incomes)):
+        if net_incomes[i-1] != 0:  # Avoid division by zero
+            growth_rate = (net_incomes[i] - net_incomes[i-1]) / abs(net_incomes[i-1])
+            growth_rates.append(growth_rate)
+    
+    if not growth_rates:
+        return None, None
+    
+    # Calculate average growth rate
+    avg_growth_rate = sum(growth_rates) / len(growth_rates)
+    
+    # Check if growth is consistent (all positive or all negative)
+    is_consistent = all(rate > 0 for rate in growth_rates) or all(rate < 0 for rate in growth_rates)
+    
+    return avg_growth_rate, is_consistent
+
+def analyze_consistency(historical_metrics):
+    """Analyze earnings consistency with improved logic."""
+    if not historical_metrics:
+        return 0.0
+    
+    growth_rate, is_consistent = calculate_earnings_growth_rate(historical_metrics)
+    if growth_rate is None:
+        return 0.0
+    
+    score = 0.0
+    
+    # Award points for consistent growth/decline
+    if is_consistent:
+        score += 3.0
+        logger.debug("Added 3 points for consistent earnings trend")
+    
+    # Award points based on growth rate magnitude
+    if abs(growth_rate) > 0.5:  # 50% growth/decline
+        score += 2.0
+        logger.debug(f"Added 2 points for significant growth rate: {growth_rate:.2%}")
+    elif abs(growth_rate) > 0.2:  # 20% growth/decline
+        score += 1.0
+        logger.debug(f"Added 1 point for moderate growth rate: {growth_rate:.2%}")
+    
+    # Normalize score to 0-1 range
+    normalized_score = min(score / 5.0, 1.0)
+    logger.debug(f"Final consistency score: {score}, Normalized: {normalized_score:.2f}")
+    
+    return normalized_score
+
+def analyze_operating_margins(historical_metrics):
+    """Analyze operating margins with improved logic."""
+    if not historical_metrics:
+        return {"score": 0.0, "reasons": ["No historical data available"]}
+    
+    margins = []
+    for metric in historical_metrics:
+        if 'operating_margin' in metric and metric['operating_margin'] is not None:
+            margins.append(metric['operating_margin'])
+    
+    if not margins:
+        return {"score": 0.0, "reasons": ["No operating margin data available"]}
+    
+    # Calculate margin stability
+    margin_changes = [margins[i] - margins[i-1] for i in range(1, len(margins))]
+    is_improving = all(change >= 0 for change in margin_changes)
+    is_stable = all(abs(change) < 0.05 for change in margin_changes)  # Less than 5% change
+    
+    # Calculate average margin
+    avg_margin = sum(margins) / len(margins)
+    latest_margin = margins[-1]
+    
+    score = 0.0
+    reasons = []
+    
+    # Score based on margin level
+    if latest_margin > 0.15:  # 15% margin
+        score += 3.0
+        reasons.append("Strong operating margins (>15%)")
+    elif latest_margin > 0.10:  # 10% margin
+        score += 2.0
+        reasons.append("Good operating margins (10-15%)")
+    elif latest_margin > 0.05:  # 5% margin
+        score += 1.0
+        reasons.append("Moderate operating margins (5-10%)")
+    elif latest_margin > 0:
+        reasons.append("Weak but positive operating margins")
+    else:
+        reasons.append(f"Negative operating margins: {latest_margin:.1%}")
+    
+    # Score based on trend
+    if is_improving:
+        score += 2.0
+        reasons.append("Consistently improving margins")
+    elif is_stable:
+        score += 1.0
+        reasons.append("Stable margins")
+    else:
+        reasons.append("Unstable margins")
+    
+    # Normalize score to 0-1 range
+    normalized_score = min(score / 5.0, 1.0)
+    
+    return {
+        "score": normalized_score,
+        "reasons": reasons,
+        "latest_margin": latest_margin,
+        "avg_margin": avg_margin,
+        "is_improving": is_improving,
+        "is_stable": is_stable
+    }
+
+def get_insider_activity_data(ticker):
+    """Get insider activity data once and cache it."""
+    try:
+        insider_data = df_to_list(insider_trades(ticker))
+        if not insider_data:
+            logger.warning(f"No insider trading data available for {ticker}")
+            return None
+        return insider_data
+    except Exception as e:
+        logger.error(f"Error getting insider trading data for {ticker}: {str(e)}")
+        return None
+
 def analyze_stock(ticker):
     """Analyze a stock using multiple metrics and return a combined score."""
-    print(f"DEBUG: Starting analysis for {ticker}")
+    logger.info(f"Starting analysis for {ticker}")
     
     # Get financial data
     financial_data = get_financial_data(ticker)
     if not financial_data:
-        print(f"DEBUG: No financial data available for {ticker}")
+        logger.warning(f"No financial data available for {ticker}")
         return None
     
     # Get latest metrics
     latest_metrics = financial_data.get("latest_metrics", {})
-    print(f"DEBUG: Latest metrics for {ticker}: {latest_metrics}")
     if not latest_metrics:
-        print(f"DEBUG: No latest metrics available for {ticker}")
+        logger.warning(f"No latest metrics available for {ticker}")
         return None
     
     # Get historical metrics
     historical_metrics = financial_data.get("historical_metrics", [])
     if not historical_metrics:
-        print(f"DEBUG: No historical metrics available for {ticker}")
+        logger.warning(f"No historical metrics available for {ticker}")
         return None
     
-    # Extract market cap from latest metrics if available
+    # Validate market cap
     market_cap = latest_metrics.get('market_cap', 0)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     if market_cap == 0:
         market_cap = get_market_cap(ticker)
-    print(f"DEBUG: Market cap for {ticker} on {today}: {market_cap}")
+    
+    if not MIN_MARKET_CAP <= market_cap <= MAX_MARKET_CAP:
+        logger.warning(f"Suspicious market cap for {ticker}: {market_cap}")
+    
+    logger.info(f"Market cap for {ticker} on {today}: {market_cap}")
+    
+    # Get insider activity data once
+    insider_data = get_insider_activity_data(ticker)
+    
+    # Get financial_line_items
+    # financial_line_items = prepare_financial_line_items(ticker)
     
     # Calculate Warren Buffett metrics
     fundamentals_score, fundamentals_reasons = analyze_fundamentals(latest_metrics)
@@ -323,12 +536,12 @@ def analyze_stock(ticker):
     # Calculate Michael Burry metrics
     value_score = analyze_value(historical_metrics, historical_metrics, market_cap)
     balance_sheet_health = analyze_balance_sheet(historical_metrics, historical_metrics)
-    insider_activity = analyze_insider_activity(df_to_list(insider_trades(ticker)))
+    insider_activity = analyze_insider_activity(insider_data) if insider_data else {"score": 0.0, "reasons": ["No insider data"]}
     contrarian_sentiment = analyze_contrarian_sentiment(company_news(ticker))
     
     # Calculate Charlie Munger metrics
     moat_strength = analyze_moat_strength(historical_metrics, historical_metrics)
-    munger_management = munger_analyze_management_quality(historical_metrics, [])  # Empty list for insider trades
+    munger_management = munger_analyze_management_quality(historical_metrics, insider_data)
     predictability = analyze_predictability(historical_metrics)
     
     # Calculate Peter Lynch metrics
@@ -342,9 +555,9 @@ def analyze_stock(ticker):
     margins_stability = analyze_margins_stability(historical_metrics)
     management_efficiency = analyze_management_efficiency_leverage(historical_metrics)
     fisher_valuation = analyze_fisher_valuation(historical_metrics, market_cap)
-    fisher_insider = analyze_insider_activity(df_to_list(insider_trades(ticker)))
+    fisher_insider = insider_activity
     
-    # Calculate Stanley Druckenmiller metric
+    # Calculate Stanley Druckenmiller metrics
     price_data = df_to_list(get_price_data(ticker))
     growth_momentum = analyze_growth_and_momentum(historical_metrics, price_data)
     risk_reward = analyze_risk_reward(historical_metrics, market_cap, price_data)
@@ -362,21 +575,21 @@ def analyze_stock(ticker):
     
     # Combine scores with weighted average
     combined_score = (
-        fundamentals_score * 0.15 +  # Buffett
-        consistency_score * 0.10 +   # Buffett
-        moat_result["score"] * 0.10 +  # Buffett/Munger
-        management_result["score"] * 0.10 +  # Buffett/Munger
-        earnings_stability["score"] * 0.05 +  # Graham
-        financial_strength["score"] * 0.05 +  # Graham
-        business_quality["score"] * 0.05 +    # Ackman
-        financial_discipline["score"] * 0.05 +  # Ackman
-        disruptive_potential["score"] * 0.05 +  # Wood
-        innovation_growth["score"] * 0.05 +    # Wood
-        value_score["score"] * 0.05 +         # Burry
-        balance_sheet_health["score"] * 0.05 +  # Burry
-        moat_strength["score"] * 0.05 +       # Munger
-        predictability["score"] * 0.05 +      # Munger
-        lynch_growth["score"] * 0.05          # Lynch
+        fundamentals_score * 0.15 +
+        consistency_score * 0.10 +
+        moat_result["score"] * 0.10 +
+        management_result["score"] * 0.10 +
+        earnings_stability["score"] * 0.05 +
+        financial_strength["score"] * 0.05 +
+        business_quality["score"] * 0.05 +
+        financial_discipline["score"] * 0.05 +
+        disruptive_potential["score"] * 0.05 +
+        innovation_growth["score"] * 0.05 +
+        value_score["score"] * 0.05 +
+        balance_sheet_health["score"] * 0.05 +
+        moat_strength["score"] * 0.05 +
+        predictability["score"] * 0.05 +
+        lynch_growth["score"] * 0.05
     )
     
     # Prepare detailed analysis
@@ -444,7 +657,7 @@ def analyze_stock(ticker):
         "technical_analysis": technical_signals
     }
     
-    print(f"DEBUG: Completed analysis for {ticker}")
+    logger.info(f"Completed analysis for {ticker}")
     return analysis
 
 

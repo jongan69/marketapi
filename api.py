@@ -725,31 +725,55 @@ async def get_futures():
 
 @app.get("/calendar", response_model=CalendarResponse, tags=["Calendar"])
 async def get_calendar():
-    """
-    Get the economic calendar data.
-    
-    Returns a list of economic events with their details including date, time, release name, and impact.
-    """
+    """Get economic calendar data"""
     try:
         calendar = CustomCalendar()
         df = await calendar.calendar()
         
-        if df.empty:
-            return JSONResponse(
-                status_code=404,
-                content={"message": "No calendar data available"}
+        if df is None or df.empty:
+            # Return empty response with 200 status
+            return CalendarResponse(
+                events=[],
+                total_events=0,
+                available_dates=[]
             )
+            
+        # Convert DataFrame to list of events
+        events = []
+        for _, row in df.iterrows():
+            try:
+                event = CalendarEvent(
+                    Date=row["Date"],
+                    Time=row["Time"],
+                    Datetime=row["Datetime"],
+                    Release=row["Release"],
+                    Impact=row["Impact"],
+                    For=row["For"],
+                    Actual=row.get("Actual"),
+                    Expected=row.get("Expected"),
+                    Prior=row.get("Prior")
+                )
+                events.append(event)
+            except Exception as e:
+                print(f"Error processing calendar event: {e}")
+                continue
+                
+        # Get unique dates for available_dates
+        available_dates = sorted(df["Date"].unique().tolist())
         
-        events = df.to_dict('records')
-        available_dates = sorted(df['Date'].unique().tolist())
-        
-        return {
-            "events": events,
-            "total_events": len(events),
-            "available_dates": available_dates
-        }
+        return CalendarResponse(
+            events=events,
+            total_events=len(events),
+            available_dates=available_dates
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log the error but return empty response with 200 status
+        print(f"Calendar endpoint error: {e}")
+        return CalendarResponse(
+            events=[],
+            total_events=0,
+            available_dates=[]
+        )
 
 @app.post("/calendar/filter", response_model=CalendarResponse, tags=["Calendar"])
 async def filter_calendar(filter: CalendarFilter):
@@ -828,33 +852,45 @@ async def get_calendar_summary():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health", tags=["System"], response_model=HealthCheck)
+@app.get("/health", response_model=HealthCheck, tags=["Health"])
 async def health_check():
-    start_time = time.time()
-    log_endpoint_access("/health")
-    
+    """Check API health status"""
     try:
-        uptime = time.time() - app.state.start_time
-        services_status = {
-            "finviz": "up" if finvizfinance("AAPL") is not None else "down",
-            "calendar": "up" if CustomCalendar() is not None else "down",
-        }
+        # Check if services are responding
+        calendar_status = "healthy"
+        try:
+            # Test calendar service
+            calendar = CustomCalendar()
+            await calendar.calendar()
+        except Exception as e:
+            print(f"Calendar service health check failed: {e}")
+            calendar_status = "unhealthy"
+            
+        # Calculate uptime
+        uptime_seconds = int(time.time() - app.state.start_time)
+        uptime = str(datetime.timedelta(seconds=uptime_seconds))
         
-        response = {
-            "status": "healthy",
-            "version": "1.0.0",
-            "timestamp": datetime.utcnow().isoformat(),
-            "uptime": uptime,
-            "services": services_status
-        }
-        
-        duration = time.time() - start_time
-        log_performance("health_check", duration)
-        
-        return response
+        return HealthCheck(
+            status="healthy",
+            version="1.0.0",
+            timestamp=datetime.now().isoformat(),
+            uptime=uptime,
+            services={
+                "calendar": calendar_status
+            }
+        )
     except Exception as e:
-        log_error(e, {"endpoint": "/health"})
-        raise HTTPException(status_code=500, detail=str(e))
+        # Even if health check fails, return 200 with degraded status
+        print(f"Health check error: {e}")
+        return HealthCheck(
+            status="degraded",
+            version="1.0.0",
+            timestamp=datetime.now().isoformat(),
+            uptime="unknown",
+            services={
+                "calendar": "unknown"
+            }
+        )
 
 @app.get("/fomc/calendar", tags=["FOMC"])
 async def get_fomc_calendar():

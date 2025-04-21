@@ -24,6 +24,9 @@ class CustomCalendar:
         
         Returns:
             df(pandas.DataFrame): economic calendar table
+            
+        Raises:
+            Exception: If there's an error fetching or processing the calendar data
         """
         try:
             print(f"Making request to URL: {self.url}")
@@ -37,13 +40,27 @@ class CustomCalendar:
                         if response.status != 200:
                             error_text = await response.text()
                             print(f"Error response body: {error_text}")
-                            response.raise_for_status()
+                            if response.status == 403:
+                                raise Exception("Access forbidden - FinViz is blocking our requests. Please try again later or contact support if the issue persists.")
+                            elif response.status == 429:
+                                raise Exception("Rate limited - Too many requests to FinViz. Please wait a few minutes before trying again.")
+                            else:
+                                response.raise_for_status()
                             
                         html = await response.text()
                         print(f"Received HTML response of length: {len(html)}")
+                        
+                        if not html or len(html.strip()) == 0:
+                            raise Exception("Received empty response from FinViz - the service may be temporarily unavailable")
+                            
                 except aiohttp.ClientError as e:
                     print(f"HTTP request failed: {e}")
-                    return self._empty_dataframe()
+                    if isinstance(e, aiohttp.ClientTimeout):
+                        raise Exception("Request to FinViz timed out - please try again")
+                    elif isinstance(e, aiohttp.ClientConnectorError):
+                        raise Exception("Could not connect to FinViz - please check your internet connection")
+                    else:
+                        raise Exception(f"Failed to fetch calendar data: {str(e)}")
             
             # Parse the HTML
             soup = BeautifulSoup(html, 'html.parser')
@@ -57,6 +74,9 @@ class CustomCalendar:
                 print("No tables found with class 'calendar_table', trying to find any table...")
                 tables = soup.find_all("table")
                 print(f"Found {len(tables)} tables without class filter")
+                
+                if not tables:
+                    raise Exception("No calendar tables found in the response - FinViz page structure may have changed")
             
             frame = []
             current_date = None
@@ -135,10 +155,10 @@ class CustomCalendar:
                 return df
             else:
                 print("No events found in the calendar")
-                return self._empty_dataframe()
+                raise Exception("No economic events found in the calendar - the data may be temporarily unavailable")
         except Exception as e:
             print(f"Error fetching calendar data: {e}")
-            return self._empty_dataframe()
+            raise
     
     def _empty_dataframe(self):
         """Return an empty DataFrame with the expected columns"""

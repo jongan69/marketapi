@@ -8,6 +8,7 @@ def analyze_fisher_growth_quality(financial_line_items: list) -> dict:
       - R&D as a % of Revenue (if relevant, indicative of future-oriented spending)
     """
     if not financial_line_items or len(financial_line_items) < 2:
+        print("MISSING DATA: Insufficient financial data for growth/quality analysis")
         return {
             "score": 0,
             "details": "Insufficient financial data for growth/quality analysis",
@@ -36,8 +37,10 @@ def analyze_fisher_growth_quality(financial_line_items: list) -> dict:
             else:
                 details.append(f"Minimal or negative multi-period revenue growth: {rev_growth:.1%}")
         else:
+            print("MISSING DATA: Oldest revenue is zero/negative; cannot compute growth")
             details.append("Oldest revenue is zero/negative; cannot compute growth.")
     else:
+        print(f"MISSING DATA: Not enough revenue data points for growth calculation. Found {len(revenues)} points, need at least 2")
         details.append("Not enough revenue data points for growth calculation.")
 
     # 2. EPS Growth (YoY)
@@ -59,8 +62,10 @@ def analyze_fisher_growth_quality(financial_line_items: list) -> dict:
             else:
                 details.append(f"Minimal or negative multi-period EPS growth: {eps_growth:.1%}")
         else:
+            print("MISSING DATA: Oldest EPS near zero; skipping EPS growth calculation")
             details.append("Oldest EPS near zero; skipping EPS growth calculation.")
     else:
+        print(f"MISSING DATA: Not enough EPS data points for growth calculation. Found {len(eps_values)} points, need at least 2")
         details.append("Not enough EPS data points for growth calculation.")
 
     # 3. R&D as % of Revenue (if we have R&D data)
@@ -84,6 +89,7 @@ def analyze_fisher_growth_quality(financial_line_items: list) -> dict:
         else:
             details.append("No meaningful R&D expense ratio")
     else:
+        print("MISSING DATA: Insufficient R&D data to evaluate")
         details.append("Insufficient R&D data to evaluate")
 
     # scale raw_score (max 9) to 0–10
@@ -96,6 +102,7 @@ def analyze_margins_stability(financial_line_items: list) -> dict:
     Looks at margin consistency (gross/operating margin) and general stability over time.
     """
     if not financial_line_items or len(financial_line_items) < 2:
+        print("MISSING DATA: Insufficient data for margin stability analysis")
         return {
             "score": 0,
             "details": "Insufficient data for margin stability analysis",
@@ -119,6 +126,7 @@ def analyze_margins_stability(financial_line_items: list) -> dict:
         else:
             details.append(f"Operating margin may be negative or uncertain")
     else:
+        print(f"MISSING DATA: Not enough operating margin data points. Found {len(op_margins)} points, need at least 2")
         details.append("Not enough operating margin data points")
 
     # 2. Gross Margin Level
@@ -135,6 +143,7 @@ def analyze_margins_stability(financial_line_items: list) -> dict:
         else:
             details.append(f"Low gross margin: {recent_gm:.1%}")
     else:
+        print("MISSING DATA: No gross margin data available")
         details.append("No gross margin data available")
 
     # 3. Multi-year Margin Stability
@@ -150,6 +159,7 @@ def analyze_margins_stability(financial_line_items: list) -> dict:
         else:
             details.append("Operating margin volatility is high")
     else:
+        print(f"MISSING DATA: Not enough margin data points for volatility check. Found {len(op_margins)} points, need at least 3")
         details.append("Not enough margin data points for volatility check")
 
     # scale raw_score (max 6) to 0-10
@@ -165,6 +175,7 @@ def analyze_management_efficiency_leverage(financial_line_items: list) -> dict:
       - Possibly check if free cash flow is consistently positive
     """
     if not financial_line_items:
+        print("MISSING DATA: No financial data for management efficiency analysis")
         return {
             "score": 0,
             "details": "No financial data for management efficiency analysis",
@@ -193,8 +204,10 @@ def analyze_management_efficiency_leverage(financial_line_items: list) -> dict:
             else:
                 details.append(f"ROE is near zero or negative: {roe:.1%}")
         else:
+            print("MISSING DATA: Recent net income is zero or negative, hurting ROE")
             details.append("Recent net income is zero or negative, hurting ROE")
     else:
+        print("MISSING DATA: Insufficient data for ROE calculation")
         details.append("Insufficient data for ROE calculation")
 
     # 2. Debt-to-Equity
@@ -212,6 +225,7 @@ def analyze_management_efficiency_leverage(financial_line_items: list) -> dict:
         else:
             details.append(f"High debt-to-equity: {dte:.2f}")
     else:
+        print("MISSING DATA: Insufficient data for debt/equity analysis")
         details.append("Insufficient data for debt/equity analysis")
 
     # 3. FCF Consistency
@@ -227,6 +241,7 @@ def analyze_management_efficiency_leverage(financial_line_items: list) -> dict:
         else:
             details.append(f"Free cash flow is inconsistent or often negative")
     else:
+        print("MISSING DATA: Insufficient or no FCF data to check consistency")
         details.append("Insufficient or no FCF data to check consistency")
 
     final_score = min(10, (raw_score / 6) * 10)
@@ -242,6 +257,7 @@ def analyze_fisher_valuation(financial_line_items: list, market_cap: float | Non
     We will grant up to 2 points for each of two metrics => max 4 raw => scale to 0–10.
     """
     if not financial_line_items or market_cap is None:
+        print("MISSING DATA: Insufficient data to perform valuation")
         return {"score": 0, "details": "Insufficient data to perform valuation"}
 
     details = []
@@ -263,6 +279,7 @@ def analyze_fisher_valuation(financial_line_items: list, market_cap: float | Non
         else:
             details.append(f"High P/E ratio: {pe_ratio:.1f}")
     else:
+        print("MISSING DATA: Cannot compute P/E ratio (no positive earnings)")
         details.append("Cannot compute P/E ratio (no positive earnings)")
 
     # 2) P/FCF
@@ -277,6 +294,7 @@ def analyze_fisher_valuation(financial_line_items: list, market_cap: float | Non
         else:
             details.append(f"High P/FCF ratio: {pfcf_ratio:.1f}")
     else:
+        print("MISSING DATA: Cannot compute P/FCF ratio (no positive FCF)")
         details.append("Cannot compute P/FCF ratio (no positive FCF)")
 
     # Scale raw_score (max 4) to 0–10
@@ -296,6 +314,7 @@ def analyze_insider_activity(insider_trades: list) -> dict:
     details = []
 
     if not insider_trades:
+        print("MISSING DATA: No insider trades data; defaulting to neutral")
         details.append("No insider trades data; defaulting to neutral")
         return {"score": score, "details": "; ".join(details)}
 
@@ -327,6 +346,7 @@ def analyze_insider_activity(insider_trades: list) -> dict:
 
     total = buys + sells
     if total == 0:
+        print("MISSING DATA: No buy/sell transactions found; neutral")
         details.append("No buy/sell transactions found; neutral")
         return {"score": score, "details": "; ".join(details)}
 

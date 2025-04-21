@@ -200,6 +200,26 @@ def test_health_endpoint() -> None:
     test_endpoint("/health", validate_response=True, 
                  expected_response_keys=["status", "version", "timestamp", "uptime", "services"])
 
+def test_analyst_metrics_endpoints() -> None:
+    """Test analyst metrics and combined metrics endpoints"""
+    log("Testing analyst metrics endpoints...")
+    
+    # Test analyst metrics endpoint with different symbols
+    symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+    for symbol in symbols:
+        test_endpoint(f"/stock/{symbol}/analysts", validate_response=True,
+                     expected_response_keys=["symbol", "analyst_ratings", "price_targets", 
+                                          "recommendation_summary", "earnings_estimates",
+                                          "revenue_estimates", "eps_estimates"])
+        
+        test_endpoint(f"/stock/{symbol}/combined_metrics", validate_response=True,
+                     expected_response_keys=["symbol", "analysis", "combined_score", 
+                                          "analyst_scores", "details"])
+    
+    # Test invalid stock symbol
+    test_endpoint("/stock/INVALID_SYMBOL/analysts", expected_status=500)
+    test_endpoint("/stock/INVALID_SYMBOL/combined_metrics", expected_status=500)
+
 def print_summary() -> None:
     """Print test summary"""
     print("\n" + "="*50)
@@ -224,6 +244,7 @@ def main() -> None:
     test_calendar_endpoints()
     test_fomc_endpoints()
     test_health_endpoint()
+    test_analyst_metrics_endpoints()
     
     # Print summary
     print_summary()
