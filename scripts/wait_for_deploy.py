@@ -10,8 +10,8 @@ load_dotenv(override=True)
 
 RENDER_API_KEY = os.getenv('RENDER_API_KEY')
 SERVICE_ID = os.getenv('SERVICE_ID')
-MAX_RETRIES = 30  # 5 minutes with 10 second intervals
-RETRY_INTERVAL = 10  # seconds
+MAX_RETRIES = 20  # 10 minutes with 50 second intervals
+RETRY_INTERVAL = 50  # seconds
 
 def get_latest_deploy() -> Dict[str, Any]:
     """Get the latest deploy from Render API"""
