@@ -1043,7 +1043,7 @@ async def get_highest_volume(limit: int = Query(100, description="Number of stoc
         })
         
         # Get screener data with minimal pages
-        df = screener.screener_view(order='Volume', limit=min(limit, 20), ascend=False)
+        df = screener.screener_view(order='Volume', limit=min(limit, 100), ascend=False)
         
         # Clean the Volume column if needed
         if df['Volume'].dtype == object:
