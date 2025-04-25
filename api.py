@@ -31,6 +31,7 @@ from tools.combined_metrics import analyze_stock
 stock_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for stock data
 screener_cache = TTLCache(maxsize=50, ttl=600)  # 10 minutes cache for screener data
 calendar_cache = TTLCache(maxsize=10, ttl=1800)  # 30 minutes cache for calendar data
+volume_cache = TTLCache(maxsize=1, ttl=300)  # 5 minutes cache for volume data
 
 app = FastAPI(
     title="Market Data API",
@@ -146,6 +147,18 @@ class CombinedMetricsResponse(BaseModel):
     combined_score: float
     analyst_scores: Dict[str, float]
     details: Dict[str, Any]
+
+class VolumeStock(BaseModel):
+    """Response model for volume stock data"""
+    ticker: str
+    company: str
+    volume: int
+    price: float
+
+class VolumeResponse(BaseModel):
+    """Response model for volume endpoint"""
+    stocks: List[VolumeStock]
+    total_stocks: int
 
 # Add this near the start of your file, after the imports
 start_time = time.time()
@@ -1014,6 +1027,49 @@ async def get_latest_fomc_meeting():
             status="error",
             error=str(e)
         )
+
+@app.get("/screener/volume", response_model=VolumeResponse, tags=["Screener"])
+@async_cached(volume_cache)
+async def get_highest_volume(limit: int = Query(100, description="Number of stocks to return", ge=1, le=1000)):
+    """Get stocks with highest trading volume"""
+    try:
+        # Initialize screener with specific filters
+        screener = Overview()
+        
+        # Set filters to reduce the dataset size
+        screener.set_filter(filters_dict={
+            'Exchange': 'Any',  # All exchanges
+            'Current Volume': 'Over 1M',  # Only high volume stocks
+        })
+        
+        # Get screener data with minimal pages
+        df = screener.screener_view(order='Volume', limit=min(limit, 20), ascend=False)
+        
+        # Clean the Volume column if needed
+        if df['Volume'].dtype == object:
+            df['Volume'] = df['Volume'].str.replace(',', '').astype(int)
+        
+        # Sort by volume descending
+        df = df.sort_values(by='Volume', ascending=False)
+        
+        # Convert to response model
+        stocks = [
+            VolumeStock(
+                ticker=row['Ticker'],
+                company=row['Company'],
+                volume=int(row['Volume']),
+                price=float(row['Price'])
+            )
+            for _, row in df.iterrows()
+        ]
+        
+        return VolumeResponse(
+            stocks=stocks,
+            total_stocks=len(stocks)
+        )
+    except Exception as e:
+        log_error(e, {"endpoint": "get_highest_volume", "limit": limit})
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT is not set

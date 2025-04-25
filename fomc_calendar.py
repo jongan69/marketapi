@@ -44,6 +44,7 @@ class FOMCCalendar:
         year_match = re.search(r'\b(20\d{2})\b', text)
         if year_match:
             return int(year_match.group(1))
+        print(f"DEBUG: Could not extract year from text: {text}")
         return None
 
     def _parse_date_text(self, date_text: str) -> tuple[int, int]:
@@ -54,11 +55,19 @@ class FOMCCalendar:
         # Handle date ranges
         if '-' in date_text:
             parts = date_text.split('-')
-            day_start = int(re.search(r'\d+', parts[0]).group())
-            day_end = int(re.search(r'\d+', parts[1]).group())
+            try:
+                day_start = int(re.search(r'\d+', parts[0]).group())
+                day_end = int(re.search(r'\d+', parts[1]).group())
+            except (AttributeError, ValueError) as e:
+                print(f"DEBUG: Error parsing date range: {date_text}, Error: {e}")
+                raise
         else:
-            day_start = int(re.search(r'\d+', date_text).group())
-            day_end = day_start
+            try:
+                day_start = int(re.search(r'\d+', date_text).group())
+                day_end = day_start
+            except (AttributeError, ValueError) as e:
+                print(f"DEBUG: Error parsing single date: {date_text}, Error: {e}")
+                raise
             
         return day_start, day_end
 
@@ -71,19 +80,29 @@ class FOMCCalendar:
         # Remove any HTML tags
         month_text = month_text.replace('<strong>', '').replace('</strong>', '').strip()
         
+        if not month_text:
+            print(f"DEBUG: Empty month text after parsing")
+            
         return month_text
 
     def _parse_date_to_datetime(self, month: str, day_start: int, day_end: int, year: int) -> pd.Timestamp:
         """Convert date components to a pandas Timestamp."""
         # Use the end day of the meeting for sorting to ensure proper chronological order
         date_str = f"{month} {day_end}, {year}"
-        return pd.to_datetime(date_str)
+        try:
+            return pd.to_datetime(date_str)
+        except Exception as e:
+            print(f"DEBUG: Error converting to datetime: {date_str}, Error: {e}")
+            raise
 
     async def _fetch_minutes_text(self, minutes_link: str) -> str:
         """Fetch and extract text from minutes link."""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(minutes_link, headers=self.headers) as response:
+                    if response.status != 200:
+                        print(f"DEBUG: Failed to fetch minutes from {minutes_link}, Status: {response.status}")
+                        return ""
                     html = await response.text()
                     
             soup = BeautifulSoup(html, 'html.parser')
@@ -101,6 +120,10 @@ class FOMCCalendar:
             if not content:
                 content = soup.body
                 
+            if not content:
+                print(f"DEBUG: Could not find main content in minutes page: {minutes_link}")
+                return ""
+                
             # Get text and clean it up
             text = content.get_text(separator=' ', strip=True)
             
@@ -115,6 +138,7 @@ class FOMCCalendar:
             
             # If we still don't have meaningful content, try a different approach
             if not text or text == "FOMC Minutes":
+                print(f"DEBUG: No meaningful content found in minutes, trying alternative approach")
                 # Try finding all paragraphs
                 paragraphs = soup.find_all('p')
                 lines = []
@@ -123,6 +147,9 @@ class FOMCCalendar:
                     if text and not text.isspace() and not text == "FOMC Minutes":
                         lines.append(text)
                 text = ' '.join(lines)
+            
+            if not text:
+                print(f"DEBUG: Still no content found in minutes after all attempts")
             
             # Remove common navigation text patterns if they exist
             if "The Federal Reserve, the central bank of the United States" in text:
@@ -141,7 +168,7 @@ class FOMCCalendar:
             return text.strip()
             
         except Exception as e:
-            print(f"Error fetching minutes text: {e}")
+            print(f"DEBUG: Error fetching minutes text: {e}")
             return ""
     
     async def get_minutes_summary(self, minutes_link: str, minutes_text: Optional[str] = None) -> Optional[str]:
@@ -156,6 +183,7 @@ class FOMCCalendar:
             A summary of the minutes if summarizer is available, otherwise None
         """
         if not self.summarizer:
+            print("DEBUG: No summarizer available")
             return None
             
         try:
@@ -164,6 +192,7 @@ class FOMCCalendar:
                 minutes_text = await self._fetch_minutes_text(minutes_link)
                 
             if not minutes_text:
+                print(f"DEBUG: No minutes text available for summarization")
                 return None
                 
             # Create a new summary using the summarizer without chunking
@@ -171,11 +200,12 @@ class FOMCCalendar:
             return summary
             
         except Exception as e:
-            print(f"Error generating minutes summary: {e}")
+            print(f"DEBUG: Error generating minutes summary: {e}")
             return None
     
     def _empty_dataframe(self) -> pd.DataFrame:
         """Return an empty DataFrame with the correct columns."""
+        print("DEBUG: Creating empty DataFrame due to no data found")
         return pd.DataFrame(columns=[
             'Year', 'Month', 'Day_Start', 'Day_End', 'Date',
             'Is_Projection', 'Has_Press_Conference',
@@ -196,6 +226,7 @@ class FOMCCalendar:
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.CALENDAR_URL, headers=self.headers) as response:
                     if response.status != 200:
+                        print(f"DEBUG: Failed to fetch FOMC calendar: {response.status}")
                         raise Exception(f"Failed to fetch FOMC calendar: {response.status}")
                     
                     html = await response.text()
@@ -206,15 +237,19 @@ class FOMCCalendar:
             # Use current year if no year specified
             if year is None:
                 year = pd.Timestamp.now().year
+                print(f"DEBUG: No year specified, using current year: {year}")
             
             # Find all year panels
             year_panels = soup.find_all('div', class_='panel-default')
+            if not year_panels:
+                print("DEBUG: No year panels found in the calendar page")
             
             for panel in year_panels:
                 try:
                     # Extract year from panel heading
                     year_elem = panel.find('h4')
                     if not year_elem:
+                        print("DEBUG: No year element found in panel")
                         continue
                         
                     year_text = year_elem.text.strip()
@@ -226,6 +261,8 @@ class FOMCCalendar:
 
                     # Find all meeting entries in this panel
                     meeting_entries = panel.find_all('div', class_='fomc-meeting')
+                    if not meeting_entries:
+                        print(f"DEBUG: No meeting entries found for year {current_year}")
                     
                     for entry in meeting_entries:
                         try:
@@ -234,6 +271,7 @@ class FOMCCalendar:
                             date_elem = entry.find('div', class_='fomc-meeting__date')
                             
                             if not month_elem or not date_elem:
+                                print("DEBUG: Missing month or date element in meeting entry")
                                 continue
 
                             month = self._parse_month_text(month_elem.text)
@@ -241,8 +279,8 @@ class FOMCCalendar:
                             
                             try:
                                 day_start, day_end = self._parse_date_text(date_text)
-                            except (ValueError, AttributeError):
-                                print(f"Could not parse date: {date_text}")
+                            except (ValueError, AttributeError) as e:
+                                print(f"DEBUG: Could not parse date: {date_text}, Error: {e}")
                                 continue
 
                             # Check for statement and minutes links
@@ -268,6 +306,8 @@ class FOMCCalendar:
                                 if date_match:
                                     date_str = date_match.group(1)
                                     statement_link = f"{self.BASE_URL}/monetarypolicy/files/monetary{date_str}a1.pdf"
+                                else:
+                                    print(f"DEBUG: Could not extract date from minutes link: {minutes_link}")
 
                             # Check if meeting has press conference
                             has_press = bool(entry.find(text=re.compile('Press Conference', re.IGNORECASE)))
@@ -300,15 +340,15 @@ class FOMCCalendar:
                             })
 
                         except Exception as e:
-                            print(f"Error processing meeting entry: {e}")
+                            print(f"DEBUG: Error processing meeting entry: {e}")
                             continue
 
                 except Exception as e:
-                    print(f"Error processing year panel: {e}")
+                    print(f"DEBUG: Error processing year panel: {e}")
                     continue
 
             if not meetings_data:
-                print(f"No meetings found for year {year}")
+                print(f"DEBUG: No meetings found for year {year}")
                 return self._empty_dataframe(), self._empty_dataframe()
 
             # Create DataFrame and sort by date
@@ -324,10 +364,12 @@ class FOMCCalendar:
             past_meetings = df[df['Date'] <= now].sort_values('Date', ascending=False)
             future_meetings = df[df['Date'] > now].sort_values('Date')
             
+            print(f"DEBUG: Found {len(past_meetings)} past meetings and {len(future_meetings)} future meetings")
+            
             return past_meetings, future_meetings
             
         except Exception as e:
-            print(f"Error fetching FOMC calendar: {e}")
+            print(f"DEBUG: Error fetching FOMC calendar: {e}")
             return self._empty_dataframe(), self._empty_dataframe()
     
     def _get_next_month(self, month: str) -> str:
@@ -338,6 +380,7 @@ class FOMCCalendar:
             idx = months.index(month)
             return months[(idx + 1) % 12]
         except ValueError:
+            print(f"DEBUG: Invalid month provided: {month}")
             return month
             
     def _parse_date_string(self, date_str: str) -> str:
@@ -349,5 +392,6 @@ class FOMCCalendar:
                 start_date = parts[0].strip()
                 return start_date  # Use start date for sorting
             return date_str
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: Error parsing date string: {date_str}, Error: {e}")
             return date_str 
