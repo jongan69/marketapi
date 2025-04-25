@@ -26,6 +26,7 @@ jobs:
     - name: Wait for Render deploy
       env:
         RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        SERVICE_ID: ${{ secrets.SERVICE_ID }}
       run: |
         python scripts/wait_for_deploy.py
 
