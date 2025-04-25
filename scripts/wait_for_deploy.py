@@ -4,6 +4,9 @@ import time
 import sys
 import os
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 RENDER_API_KEY = os.getenv('RENDER_API_KEY')
 SERVICE_ID = os.getenv('SERVICE_ID')
