@@ -5,14 +5,14 @@ import numpy as np
 from scipy.stats import norm
 from datetime import datetime
 import pandas as pd
-from models import PaxmainResponse, PaxmainOpportunitiesResponse, PaxmainStock
+from models import MaxPainResponse, MaxPainOpportunitiesResponse, MaxPainStock
 from finvizfinance.screener.overview import Overview
 import asyncio
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-router = APIRouter(prefix="/paxmain", tags=["Paxmain"])
+router = APIRouter(prefix="/maxpain", tags=["Max Pain"])
 
 def calculate_historical_volatility(ticker, days=30):
     """Calculate historical volatility over the specified number of days"""
@@ -147,7 +147,7 @@ def get_best_options_by_max_pain(ticker_symbol, expiration_date=None):
         'days_to_expiry': days_to_expiry
     }
 
-@router.get("/options/{symbol}", response_model=PaxmainResponse)
+@router.get("/options/{symbol}", response_model=MaxPainResponse)
 async def get_options_analysis(
     symbol: str = Path(..., description="Stock symbol (e.g., AAPL, MSFT)"),
     expiration_date: Optional[str] = Query(None, description="Specific expiration date (YYYY-MM-DD)")
@@ -155,7 +155,7 @@ async def get_options_analysis(
     """Get options analysis for a specific stock based on max pain theory"""
     try:
         options_data = get_best_options_by_max_pain(symbol, expiration_date)
-        return PaxmainResponse(**options_data)
+        return MaxPainResponse(**options_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -178,7 +178,7 @@ async def process_stock(stock_data):
             options_data['best_put']['profitability_score'] * 0.5
         )
         
-        return PaxmainStock(
+        return MaxPainStock(
             ticker=ticker,
             company=stock_data['Company'],
             volume=stock_data['Volume'],
@@ -203,7 +203,7 @@ async def process_stock(stock_data):
         print(f"Error analyzing {ticker}: {str(e)}")
         return None
 
-@router.get("/opportunities", response_model=PaxmainOpportunitiesResponse)
+@router.get("/opportunities", response_model=MaxPainOpportunitiesResponse)
 async def get_options_opportunities(
     limit: int = Query(100, description="Number of high volume stocks to analyze", ge=1, le=100),
     top_n: int = Query(10, description="Number of best opportunities to return", ge=1, le=20)
@@ -263,7 +263,7 @@ async def get_options_opportunities(
         end_time = time.time()
         print(f"Total processing time: {end_time - start_time:.2f} seconds")
         
-        return PaxmainOpportunitiesResponse(
+        return MaxPainOpportunitiesResponse(
             opportunities=top_opportunities,
             total_opportunities=len(top_opportunities)
         )

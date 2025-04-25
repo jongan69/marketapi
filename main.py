@@ -12,7 +12,7 @@ import time
 from routes.stocks import router as stocks_router
 from routes.screener import router as screener_router
 from routes.calendar import router as calendar_router
-from routes.paxmain import router as paxmain_router
+from routes.maxpain import router as maxpain_router
 from routes.health import router as health_router
 from routes.insider import router as insider_router
 from routes.news import router as news_router
@@ -53,7 +53,7 @@ async def root():
 app.include_router(stocks_router)
 app.include_router(screener_router)
 app.include_router(calendar_router)
-app.include_router(paxmain_router)
+app.include_router(maxpain_router)
 app.include_router(health_router)
 app.include_router(insider_router)
 app.include_router(news_router)

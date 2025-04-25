@@ -127,7 +127,7 @@ class OptionDetails(BaseModel):
     profitability_score: float
     implied_volatility: float
 
-class PaxmainResponse(BaseModel):
+class MaxPainResponse(BaseModel):
     """Response model for options max pain analysis.
     
     Attributes:
@@ -147,7 +147,7 @@ class PaxmainResponse(BaseModel):
     expiration: str
     days_to_expiry: int
 
-class PaxmainStock(BaseModel):
+class MaxPainStock(BaseModel):
     """Model for stock with options max pain analysis.
     
     Attributes:
@@ -191,14 +191,14 @@ class PaxmainStock(BaseModel):
     expiration: str
     days_to_expiry: int
 
-class PaxmainOpportunitiesResponse(BaseModel):
+class MaxPainOpportunitiesResponse(BaseModel):
     """Response model for options trading opportunities.
     
     Attributes:
         opportunities: List of potential trading opportunities
         total_opportunities: Total number of opportunities found
     """
-    opportunities: List[PaxmainStock]
+    opportunities: List[MaxPainStock]
     total_opportunities: int
 
 # =============================================
