@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 # Configuration
-BASE_URL = "http://localhost:8000"  # Change this to your API URL
+BASE_URL = "https://marketapi-mu83.onrender.com"  # Change this to your API URL
 VERBOSE = True  # Set to False to only show errors
 REQUEST_DELAY = 2  # Delay between requests in seconds
 MAX_RETRIES = 3  # Maximum number of retries for rate-limited endpoints
@@ -187,11 +187,11 @@ def test_fomc_endpoints() -> None:
     log("Testing FOMC endpoints...")
     
     # Test FOMC calendar endpoint
-    test_endpoint("/fomc/calendar", validate_response=True, 
+    test_endpoint("/calendar/fomc", validate_response=True, 
                  expected_response_keys=["past_meetings", "future_meetings", "total_meetings", "years"])
     
     # Test latest FOMC meeting endpoint
-    test_endpoint("/fomc/latest", validate_response=True, 
+    test_endpoint("/calendar/fomc/latest", validate_response=True, 
                  expected_response_keys=["meeting", "next_meeting", "status", "error"])
 
 def test_health_endpoint() -> None:
