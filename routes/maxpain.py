@@ -8,15 +8,42 @@ import pandas as pd
 from models import MaxPainResponse, MaxPainOpportunitiesResponse, MaxPainStock
 from finvizfinance.screener.overview import Overview
 import asyncio
-from functools import lru_cache
+from cachetools import TTLCache
 from concurrent.futures import ThreadPoolExecutor
 import time
 
 router = APIRouter(prefix="/maxpain", tags=["Max Pain"])
 
-def calculate_historical_volatility(ticker, days=30):
+# Initialize caches
+ticker_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for ticker objects
+historical_data_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for historical data
+options_data_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for options data
+
+def get_cached_ticker(ticker_symbol: str):
+    """Get or create a cached ticker object"""
+    if ticker_symbol not in ticker_cache:
+        ticker_cache[ticker_symbol] = yf.Ticker(ticker_symbol)
+    return ticker_cache[ticker_symbol]
+
+def get_cached_historical_data(ticker_symbol: str, days: int = 30):
+    """Get or create cached historical data"""
+    cache_key = f"{ticker_symbol}_{days}"
+    if cache_key not in historical_data_cache:
+        ticker = get_cached_ticker(ticker_symbol)
+        historical_data_cache[cache_key] = ticker.history(period=f"{days}d")
+    return historical_data_cache[cache_key]
+
+def get_cached_options_data(ticker_symbol: str, expiration_date: str):
+    """Get or create cached options data"""
+    cache_key = f"{ticker_symbol}_{expiration_date}"
+    if cache_key not in options_data_cache:
+        ticker = get_cached_ticker(ticker_symbol)
+        options_data_cache[cache_key] = ticker.option_chain(expiration_date)
+    return options_data_cache[cache_key]
+
+def calculate_historical_volatility(ticker_symbol: str, days: int = 30):
     """Calculate historical volatility over the specified number of days"""
-    hist = ticker.history(period=f"{days}d")
+    hist = get_cached_historical_data(ticker_symbol, days)
     returns = np.log(hist['Close'] / hist['Close'].shift(1))
     return returns.std() * np.sqrt(252)  # Annualized volatility
 
@@ -42,110 +69,130 @@ def get_best_options_by_max_pain(ticker_symbol, expiration_date=None):
     """
     Get the best options based on max pain analysis for a given ticker with profitability metrics.
     """
-    ticker = yf.Ticker(ticker_symbol)
-    spot_price = ticker.history(period='1d')['Close'][-1]
-    
-    # Get available expirations
-    expirations = ticker.options
-    if not expirations:
-        raise ValueError(f"No options data available for {ticker_symbol}")
-    
-    # Use specified expiration or next available
-    target_exp = expiration_date if expiration_date else expirations[0]
-    if target_exp not in expirations:
-        raise ValueError(f"Expiration date {target_exp} not available")
-    
-    # Calculate historical volatility
-    hist_vol = calculate_historical_volatility(ticker)
-    
-    # Get option chain
-    chain = ticker.option_chain(target_exp)
-    calls, puts = chain.calls, chain.puts
-    
-    # Filter out options with zero open interest
-    calls = calls[calls['openInterest'] > 0]
-    puts = puts[puts['openInterest'] > 0]
-    
-    if len(calls) == 0 or len(puts) == 0:
-        raise ValueError("No options with open interest found")
-    
-    # Calculate max pain
-    strikes = sorted(set(calls['strike']).union(set(puts['strike'])))
-    pain_values = []
-    
-    for strike in strikes:
-        call_pain = ((strike - calls['strike']).clip(lower=0) * calls['openInterest']).sum()
-        put_pain = ((puts['strike'] - strike).clip(lower=0) * puts['openInterest']).sum()
-        total_pain = call_pain + put_pain
-        pain_values.append((strike, total_pain))
-    
-    pain_df = pd.DataFrame(pain_values, columns=['strike', 'pain'])
-    max_pain_strike = pain_df.loc[pain_df['pain'].idxmin(), 'strike']
-    
-    # Find best options near max pain
-    best_call = calls.iloc[(calls['strike'] - max_pain_strike).abs().argmin()]
-    best_put = puts.iloc[(puts['strike'] - max_pain_strike).abs().argmin()]
-    
-    # Calculate days to expiration
-    exp_date = datetime.strptime(target_exp, '%Y-%m-%d')
-    days_to_expiry = max(1, (exp_date - datetime.now()).days)  # Ensure at least 1 day
-    
-    # Calculate probability of profit
-    call_pop = calculate_probability_of_profit(spot_price, best_call['strike'], days_to_expiry, hist_vol)
-    put_pop = calculate_probability_of_profit(spot_price, best_put['strike'], days_to_expiry, hist_vol)
-    
-    # Calculate bid-ask spread percentage
-    call_spread_pct = (best_call['ask'] - best_call['bid']) / best_call['ask'] * 100 if best_call['ask'] > 0 else 0
-    put_spread_pct = (best_put['ask'] - best_put['bid']) / best_put['ask'] * 100 if best_put['ask'] > 0 else 0
-    
-    # Calculate profitability score (0-100)
-    def calculate_profitability_score(option, is_call):
+    try:
+        ticker = get_cached_ticker(ticker_symbol)
+        
+        # Get historical data with error handling
         try:
-            distance_score = 100 * (1 - abs(option['strike'] - max_pain_strike) / spot_price)
-            volume_score = min(100, option['volume'] / 1000)  # Normalize volume
-            oi_score = min(100, option['openInterest'] / 1000)  # Normalize open interest
-            spread_score = max(0, 100 - (option['ask'] - option['bid']) / option['ask'] * 1000) if option['ask'] > 0 else 0
-            pop_score = calculate_probability_of_profit(spot_price, option['strike'], days_to_expiry, hist_vol) * 100
-            
-            return (distance_score * 0.3 + volume_score * 0.2 + oi_score * 0.2 + 
-                    spread_score * 0.15 + pop_score * 0.15)
-        except Exception:
-            return 50
-    
-    call_score = calculate_profitability_score(best_call, True)
-    put_score = calculate_profitability_score(best_put, False)
-    
-    return {
-        'max_pain_strike': max_pain_strike,
-        'spot_price': spot_price,
-        'historical_volatility': hist_vol,
-        'best_call': {
-            'strike': best_call['strike'],
-            'last_price': best_call['lastPrice'],
-            'volume': best_call['volume'],
-            'open_interest': best_call['openInterest'],
-            'bid': best_call['bid'],
-            'ask': best_call['ask'],
-            'bid_ask_spread_pct': call_spread_pct,
-            'probability_of_profit': call_pop,
-            'profitability_score': call_score,
-            'implied_volatility': best_call['impliedVolatility']
-        },
-        'best_put': {
-            'strike': best_put['strike'],
-            'last_price': best_put['lastPrice'],
-            'volume': best_put['volume'],
-            'open_interest': best_put['openInterest'],
-            'bid': best_put['bid'],
-            'ask': best_put['ask'],
-            'bid_ask_spread_pct': put_spread_pct,
-            'probability_of_profit': put_pop,
-            'profitability_score': put_score,
-            'implied_volatility': best_put['impliedVolatility']
-        },
-        'expiration': target_exp,
-        'days_to_expiry': days_to_expiry
-    }
+            hist = get_cached_historical_data(ticker_symbol)
+            if hist.empty:
+                raise ValueError(f"No data available for {ticker_symbol}")
+            spot_price = hist['Close'].iloc[-1]
+        except Exception as e:
+            raise ValueError(f"No data available for {ticker_symbol}: {str(e)}")
+        
+        # Get available expirations
+        try:
+            expirations = ticker.options
+            if not expirations:
+                raise ValueError(f"No options data available for {ticker_symbol}")
+        except Exception as e:
+            raise ValueError(f"No options data available for {ticker_symbol}: {str(e)}")
+        
+        # Use specified expiration or next available
+        target_exp = expiration_date if expiration_date else expirations[0]
+        if target_exp not in expirations:
+            raise ValueError(f"Expiration date {target_exp} not available")
+        
+        # Calculate historical volatility
+        try:
+            hist_vol = calculate_historical_volatility(ticker_symbol)
+        except Exception as e:
+            hist_vol = 0.3  # Default to 30% if calculation fails
+        
+        # Get option chain
+        try:
+            chain = get_cached_options_data(ticker_symbol, target_exp)
+            calls, puts = chain.calls, chain.puts
+        except Exception as e:
+            raise ValueError(f"Failed to get option chain for {ticker_symbol}: {str(e)}")
+        
+        # Filter out options with zero open interest
+        calls = calls[calls['openInterest'] > 0]
+        puts = puts[puts['openInterest'] > 0]
+        
+        if len(calls) == 0 or len(puts) == 0:
+            raise ValueError(f"No options with open interest found for {ticker_symbol}")
+        
+        # Calculate max pain
+        strikes = sorted(set(calls['strike']).union(set(puts['strike'])))
+        pain_values = []
+        
+        for strike in strikes:
+            call_pain = ((strike - calls['strike']).clip(lower=0) * calls['openInterest']).sum()
+            put_pain = ((puts['strike'] - strike).clip(lower=0) * puts['openInterest']).sum()
+            total_pain = call_pain + put_pain
+            pain_values.append((strike, total_pain))
+        
+        pain_df = pd.DataFrame(pain_values, columns=['strike', 'pain'])
+        max_pain_strike = pain_df.loc[pain_df['pain'].idxmin(), 'strike']
+        
+        # Find best options near max pain
+        best_call = calls.iloc[(calls['strike'] - max_pain_strike).abs().argmin()]
+        best_put = puts.iloc[(puts['strike'] - max_pain_strike).abs().argmin()]
+        
+        # Calculate days to expiration
+        exp_date = datetime.strptime(target_exp, '%Y-%m-%d')
+        days_to_expiry = max(1, (exp_date - datetime.now()).days)  # Ensure at least 1 day
+        
+        # Calculate probability of profit
+        call_pop = calculate_probability_of_profit(spot_price, best_call['strike'], days_to_expiry, hist_vol)
+        put_pop = calculate_probability_of_profit(spot_price, best_put['strike'], days_to_expiry, hist_vol)
+        
+        # Calculate bid-ask spread percentage
+        call_spread_pct = (best_call['ask'] - best_call['bid']) / best_call['ask'] * 100 if best_call['ask'] > 0 else 0
+        put_spread_pct = (best_put['ask'] - best_put['bid']) / best_put['ask'] * 100 if best_put['ask'] > 0 else 0
+        
+        # Calculate profitability score (0-100)
+        def calculate_profitability_score(option, is_call):
+            try:
+                distance_score = 100 * (1 - abs(option['strike'] - max_pain_strike) / spot_price)
+                volume_score = min(100, option['volume'] / 1000)  # Normalize volume
+                oi_score = min(100, option['openInterest'] / 1000)  # Normalize open interest
+                spread_score = max(0, 100 - (option['ask'] - option['bid']) / option['ask'] * 1000) if option['ask'] > 0 else 0
+                pop_score = calculate_probability_of_profit(spot_price, option['strike'], days_to_expiry, hist_vol) * 100
+                
+                return (distance_score * 0.3 + volume_score * 0.2 + oi_score * 0.2 + 
+                        spread_score * 0.15 + pop_score * 0.15)
+            except Exception:
+                return 50
+        
+        call_score = calculate_profitability_score(best_call, True)
+        put_score = calculate_profitability_score(best_put, False)
+        
+        return {
+            'max_pain_strike': max_pain_strike,
+            'spot_price': spot_price,
+            'historical_volatility': hist_vol,
+            'best_call': {
+                'strike': best_call['strike'],
+                'last_price': best_call['lastPrice'],
+                'volume': best_call['volume'],
+                'open_interest': best_call['openInterest'],
+                'bid': best_call['bid'],
+                'ask': best_call['ask'],
+                'bid_ask_spread_pct': call_spread_pct,
+                'probability_of_profit': call_pop,
+                'profitability_score': call_score,
+                'implied_volatility': best_call['impliedVolatility']
+            },
+            'best_put': {
+                'strike': best_put['strike'],
+                'last_price': best_put['lastPrice'],
+                'volume': best_put['volume'],
+                'open_interest': best_put['openInterest'],
+                'bid': best_put['bid'],
+                'ask': best_put['ask'],
+                'bid_ask_spread_pct': put_spread_pct,
+                'probability_of_profit': put_pop,
+                'profitability_score': put_score,
+                'implied_volatility': best_put['impliedVolatility']
+            },
+            'expiration': target_exp,
+            'days_to_expiry': days_to_expiry
+        }
+    except Exception as e:
+        raise ValueError(f"Error analyzing {ticker_symbol}: {str(e)}")
 
 @router.get("/options/{symbol}", response_model=MaxPainResponse)
 async def get_options_analysis(
@@ -159,18 +206,31 @@ async def get_options_analysis(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Cache for frequently accessed data
-@lru_cache(maxsize=1000)
-def get_cached_ticker_data(ticker_symbol: str):
-    """Cache ticker data to avoid repeated API calls"""
-    return yf.Ticker(ticker_symbol)
-
 async def process_stock(stock_data):
     """Process a single stock's options data"""
     ticker = stock_data['Ticker']
     try:
         # Get best options - pass the ticker symbol string
-        options_data = get_best_options_by_max_pain(ticker)
+        try:
+            options_data = get_best_options_by_max_pain(ticker)
+        except ValueError as e:
+            print(f"Error analyzing {ticker}: {str(e)}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error analyzing {ticker}: {str(e)}")
+            return None
+        
+        # Clean NaN values in the options data
+        def clean_nan_values(data):
+            if isinstance(data, dict):
+                return {k: clean_nan_values(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [clean_nan_values(v) for v in data]
+            elif isinstance(data, (int, float)) and np.isnan(data):
+                return 0
+            return data
+        
+        options_data = clean_nan_values(options_data)
         
         # Calculate overall opportunity score
         opportunity_score = (
@@ -200,7 +260,7 @@ async def process_stock(stock_data):
             days_to_expiry=options_data['days_to_expiry']
         )
     except Exception as e:
-        print(f"Error analyzing {ticker}: {str(e)}")
+        print(f"Error processing {ticker}: {str(e)}")
         return None
 
 @router.get("/opportunities", response_model=MaxPainOpportunitiesResponse)
