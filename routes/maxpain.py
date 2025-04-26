@@ -14,6 +14,8 @@ import time
 import logging
 import sys
 import traceback
+import threading
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # Configure logging
 logging.basicConfig(
@@ -24,10 +26,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/maxpain", tags=["Max Pain"])
 
-# Initialize caches
-ticker_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for ticker objects
-historical_data_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for historical data
-options_data_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes cache for options data
+# Initialize caches with production-safe limits
+MAX_CACHE_SIZE = 1000  # Maximum number of items in cache
+CACHE_TTL = 300  # 5 minutes in seconds
+ticker_cache = TTLCache(maxsize=MAX_CACHE_SIZE, ttl=CACHE_TTL)
+historical_data_cache = TTLCache(maxsize=MAX_CACHE_SIZE, ttl=CACHE_TTL)
+options_data_cache = TTLCache(maxsize=MAX_CACHE_SIZE, ttl=CACHE_TTL)
+finviz_cache = TTLCache(maxsize=1, ttl=CACHE_TTL)
+
+# Lock for thread-safe cache updates
+cache_lock = threading.Lock()
 
 def get_cached_ticker(ticker_symbol: str):
     """Get or create a cached ticker object"""
@@ -36,15 +44,21 @@ def get_cached_ticker(ticker_symbol: str):
         logger.debug(f"Ticker {ticker_symbol} not in cache, creating new ticker")
         try:
             ticker = yf.Ticker(ticker_symbol)
-            # Log basic ticker info to verify connection
-            logger.debug(f"Ticker info for {ticker_symbol}:")
-            logger.debug(f"Ticker info keys: {ticker.info.keys() if ticker.info else 'No info available'}")
-            logger.debug(f"Ticker history available: {ticker.history(period='1d').empty if hasattr(ticker, 'history') else 'No history method'}")
-            logger.debug(f"Ticker options available: {ticker.options if hasattr(ticker, 'options') else 'No options method'}")
+            
+            # Check if options are available before proceeding
+            try:
+                options = ticker.options
+                if not options:
+                    logger.warning(f"No options available for {ticker_symbol}, skipping")
+                    raise ValueError(f"No options data available for {ticker_symbol}")
+                logger.debug(f"Options available for {ticker_symbol}: {options}")
+            except Exception as e:
+                logger.warning(f"Error checking options for {ticker_symbol}: {str(e)}")
+                raise ValueError(f"No options data available for {ticker_symbol}")
+            
             ticker_cache[ticker_symbol] = ticker
         except Exception as e:
             logger.error(f"Error creating ticker for {ticker_symbol}: {str(e)}")
-            logger.error(f"Error type: {type(e).__name__}")
             raise
     return ticker_cache[ticker_symbol]
 
@@ -91,6 +105,63 @@ def get_cached_options_data(ticker_symbol: str, expiration_date: str):
             logger.error(f"Error type: {type(e).__name__}")
             raise
     return options_data_cache[cache_key]
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((ConnectionError, TimeoutError))
+)
+def get_cached_finviz_data(limit: int):
+    """Get or create cached Finviz screener data with retry logic"""
+    cache_key = f"finviz_{limit}"
+    
+    with cache_lock:
+        if cache_key not in finviz_cache:
+            logger.debug(f"Finviz data not in cache for limit {limit}, fetching new data")
+            try:
+                screener = Overview()
+                pages_needed = (limit + 19) // 20
+                df = pd.DataFrame()
+                
+                for page in range(1, pages_needed + 1):
+                    try:
+                        logger.debug(f"Fetching page {page} of screener data")
+                        page_df = screener.screener_view(
+                            order='Volume', 
+                            verbose=1, 
+                            select_page=page,
+                            ascend=False
+                        )
+                        df = pd.concat([df, page_df], ignore_index=True)
+                        
+                        if len(df) >= limit:
+                            logger.debug(f"Reached desired limit of {limit} stocks")
+                            break
+                            
+                        time.sleep(2)  # Increased rate limiting for production
+                    except Exception as e:
+                        logger.error(f"Error fetching page {page}: {str(e)}")
+                        if page == 1:  # If first page fails, raise the error
+                            raise
+                        break  # If subsequent page fails, use what we have
+                
+                if df.empty:
+                    raise ValueError("No data retrieved from Finviz")
+                
+                if df['Volume'].dtype == object:
+                    df['Volume'] = df['Volume'].str.replace(',', '').astype(int)
+                
+                df = df.sort_values(by='Volume', ascending=False).head(limit)
+                logger.debug(f"Retrieved {len(df)} high volume stocks")
+                
+                finviz_cache[cache_key] = df
+            except Exception as e:
+                logger.error(f"Error fetching Finviz data: {str(e)}")
+                if cache_key in finviz_cache:
+                    logger.warning("Using stale cache data due to fetch error")
+                    return finviz_cache[cache_key]
+                raise
+        return finviz_cache[cache_key]
 
 def calculate_historical_volatility(ticker_symbol: str, days: int = 30):
     """Calculate historical volatility over the specified number of days"""
@@ -309,6 +380,15 @@ async def get_options_analysis(
         # Log request details
         logger.debug(f"Request details - Symbol: {symbol}, Expiration: {expiration_date}")
         logger.debug(f"Current time: {datetime.now()}")
+        logger.debug(f"Current timezone: {datetime.now().astimezone().tzinfo}")
+        
+        # Add validation for the symbol
+        if not symbol or not isinstance(symbol, str):
+            logger.error(f"Invalid symbol format: {symbol}")
+            raise HTTPException(status_code=400, detail="Invalid symbol format")
+            
+        # Add delay for rate limiting
+        await asyncio.sleep(1)  # Add a small delay between requests
         
         options_data = get_best_options_by_max_pain(symbol, expiration_date)
         logger.info(f"Successfully completed options analysis for {symbol}")
@@ -324,13 +404,25 @@ async def process_stock(stock_data):
     ticker = stock_data['Ticker']
     logger.info(f"Processing stock: {ticker}")
     try:
+        # First check if options are available
         try:
-            options_data = get_best_options_by_max_pain(ticker)
+            ticker_obj = get_cached_ticker(ticker)
+            options = ticker_obj.options
+            if not options:
+                logger.warning(f"No options available for {ticker}, skipping")
+                return None
         except ValueError as e:
-            logger.error(f"Error analyzing {ticker}: {str(e)}")
+            logger.warning(f"Skipping {ticker} due to no options data")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error analyzing {ticker}: {str(e)}")
+            logger.error(f"Unexpected error checking options for {ticker}: {str(e)}")
+            return None
+        
+        # If we get here, options are available, proceed with analysis
+        try:
+            options_data = get_best_options_by_max_pain(ticker)
+        except Exception as e:
+            logger.error(f"Error analyzing {ticker}: {str(e)}")
             return None
         
         def clean_nan_values(data):
@@ -386,53 +478,89 @@ async def get_options_opportunities(
     try:
         start_time = time.time()
         
-        screener = Overview()
-        logger.debug(f"Initialized screener for opportunities analysis")
-        
-        pages_needed = (limit + 19) // 20
-        df = pd.DataFrame()
-        
-        for page in range(1, pages_needed + 1):
-            logger.debug(f"Fetching page {page} of screener data")
-            page_df = screener.screener_view(
-                order='Volume', 
-                verbose=1, 
-                select_page=page,
-                ascend=False
+        # Get cached Finviz data with error handling
+        try:
+            df = get_cached_finviz_data(limit)
+            logger.debug(f"Using cached Finviz data with {len(df)} stocks")
+        except Exception as e:
+            logger.error(f"Failed to get Finviz data: {str(e)}")
+            raise HTTPException(
+                status_code=503,
+                detail="Service temporarily unavailable. Please try again later."
             )
-            df = pd.concat([df, page_df], ignore_index=True)
+        
+        if df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail="No stock data available at this time."
+            )
+        
+        # Pre-filter stocks that likely don't have options
+        filtered_stocks = []
+        for stock in df.to_dict('records'):
+            try:
+                ticker = stock['Ticker']
+                ticker_obj = get_cached_ticker(ticker)
+                if ticker_obj.options:  # If options are available
+                    filtered_stocks.append(stock)
+                else:
+                    logger.debug(f"Skipping {ticker} - no options available")
+            except Exception as e:
+                logger.debug(f"Skipping {ticker} - error checking options: {str(e)}")
+        
+        if not filtered_stocks:
+            raise HTTPException(
+                status_code=404,
+                detail="No stocks with options data available at this time."
+            )
+        
+        logger.debug(f"After filtering, {len(filtered_stocks)} stocks have options data")
+        
+        # Process stocks with error handling
+        try:
+            with ThreadPoolExecutor(max_workers=min(10, len(filtered_stocks))) as executor:
+                logger.debug(f"Processing {len(filtered_stocks)} stocks in parallel")
+                tasks = [process_stock(stock) for stock in filtered_stocks]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            if len(df) >= limit:
-                logger.debug(f"Reached desired limit of {limit} stocks")
-                break
-                
-            await asyncio.sleep(1)
-        
-        if df['Volume'].dtype == object:
-            df['Volume'] = df['Volume'].str.replace(',', '').astype(int)
-        
-        df = df.sort_values(by='Volume', ascending=False).head(limit)
-        logger.debug(f"Retrieved {len(df)} high volume stocks")
-        
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            stock_list = df.to_dict('records')
-            logger.debug(f"Processing {len(stock_list)} stocks in parallel")
-            tasks = [process_stock(stock) for stock in stock_list]
-            results = await asyncio.gather(*tasks)
-        
-        valid_results = [r for r in results if r is not None]
-        valid_results.sort(key=lambda x: x.opportunity_score, reverse=True)
-        logger.debug(f"Found {len(valid_results)} valid opportunities")
-        
-        top_opportunities = valid_results[:top_n]
-        
-        end_time = time.time()
-        logger.info(f"Completed opportunities analysis in {end_time - start_time:.2f} seconds")
-        
-        return MaxPainOpportunitiesResponse(
-            opportunities=top_opportunities,
-            total_opportunities=len(top_opportunities)
-        )
+            # Filter out exceptions and None results
+            valid_results = []
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Error processing stock: {str(result)}")
+                    continue
+                if result is not None:
+                    valid_results.append(result)
+            
+            if not valid_results:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No valid opportunities found at this time."
+                )
+            
+            valid_results.sort(key=lambda x: x.opportunity_score, reverse=True)
+            logger.debug(f"Found {len(valid_results)} valid opportunities")
+            
+            top_opportunities = valid_results[:top_n]
+            
+            end_time = time.time()
+            logger.info(f"Completed opportunities analysis in {end_time - start_time:.2f} seconds")
+            
+            return MaxPainOpportunitiesResponse(
+                opportunities=top_opportunities,
+                total_opportunities=len(top_opportunities)
+            )
+        except Exception as e:
+            logger.error(f"Error processing stocks: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail="Error processing stock data. Please try again later."
+            )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in opportunities endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        logger.error(f"Unexpected error in opportunities endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred. Please try again later."
+        ) 
