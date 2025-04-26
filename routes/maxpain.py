@@ -37,29 +37,83 @@ finviz_cache = TTLCache(maxsize=1, ttl=CACHE_TTL)
 # Lock for thread-safe cache updates
 cache_lock = threading.Lock()
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((ConnectionError, TimeoutError))
+)
 def get_cached_ticker(ticker_symbol: str):
-    """Get or create a cached ticker object"""
+    """Get or create a cached ticker object with retry logic"""
     logger.debug(f"Getting cached ticker for {ticker_symbol}")
-    if ticker_symbol not in ticker_cache:
-        logger.debug(f"Ticker {ticker_symbol} not in cache, creating new ticker")
-        try:
-            ticker = yf.Ticker(ticker_symbol)
-            
-            # Check if options are available before proceeding
+    
+    with cache_lock:
+        if ticker_symbol not in ticker_cache:
+            logger.debug(f"Ticker {ticker_symbol} not in cache, creating new ticker")
             try:
-                options = ticker.options
-                if not options:
-                    logger.warning(f"No options available for {ticker_symbol}, skipping")
+                # Log environment and request details
+                logger.debug(f"Environment details for {ticker_symbol}:")
+                logger.debug(f"Python version: {sys.version}")
+                logger.debug(f"yfinance version: {yf.__version__}")
+                logger.debug(f"Current time: {datetime.now()}")
+                logger.debug(f"Timezone: {datetime.now().astimezone().tzinfo}")
+                
+                # Create ticker and log basic info
+                ticker = yf.Ticker(ticker_symbol)
+                logger.debug(f"Created yfinance Ticker object for {ticker_symbol}")
+                
+                # Try to get basic info first
+                try:
+                    info = ticker.info
+                    logger.debug(f"Basic info available for {ticker_symbol}: {bool(info)}")
+                    if info:
+                        logger.debug(f"Ticker info keys: {list(info.keys())}")
+                        logger.debug(f"Exchange: {info.get('exchange', 'N/A')}")
+                        logger.debug(f"Market: {info.get('market', 'N/A')}")
+                        logger.debug(f"Quote type: {info.get('quoteType', 'N/A')}")
+                except Exception as e:
+                    logger.warning(f"Error getting basic info for {ticker_symbol}: {str(e)}")
+                
+                # Try to get history to verify data availability
+                try:
+                    hist = ticker.history(period="1d")
+                    logger.debug(f"History data available: {not hist.empty}")
+                    if not hist.empty:
+                        logger.debug(f"Latest price: {hist['Close'].iloc[-1]}")
+                except Exception as e:
+                    logger.warning(f"Error getting history for {ticker_symbol}: {str(e)}")
+                
+                # Check if options are available
+                try:
+                    options = ticker.options
+                    logger.debug(f"Options data available for {ticker_symbol}: {bool(options)}")
+                    if options:
+                        logger.debug(f"Available expirations: {options}")
+                        # Try to get one option chain to verify
+                        try:
+                            chain = ticker.option_chain(options[0])
+                            logger.debug(f"Option chain available: {not chain.calls.empty or not chain.puts.empty}")
+                            if not chain.calls.empty:
+                                logger.debug(f"Number of calls: {len(chain.calls)}")
+                            if not chain.puts.empty:
+                                logger.debug(f"Number of puts: {len(chain.puts)}")
+                        except Exception as e:
+                            logger.warning(f"Error getting option chain for {ticker_symbol}: {str(e)}")
+                    else:
+                        logger.warning(f"No options available for {ticker_symbol}")
+                        raise ValueError(f"No options data available for {ticker_symbol}")
+                except Exception as e:
+                    logger.error(f"Error checking options for {ticker_symbol}: {str(e)}")
+                    logger.error(f"Error type: {type(e).__name__}")
+                    logger.error(f"Error traceback: {traceback.format_exc()}")
                     raise ValueError(f"No options data available for {ticker_symbol}")
-                logger.debug(f"Options available for {ticker_symbol}: {options}")
+                
+                ticker_cache[ticker_symbol] = ticker
+                logger.debug(f"Successfully cached ticker for {ticker_symbol}")
             except Exception as e:
-                logger.warning(f"Error checking options for {ticker_symbol}: {str(e)}")
-                raise ValueError(f"No options data available for {ticker_symbol}")
-            
-            ticker_cache[ticker_symbol] = ticker
-        except Exception as e:
-            logger.error(f"Error creating ticker for {ticker_symbol}: {str(e)}")
-            raise
+                logger.error(f"Error creating ticker for {ticker_symbol}: {str(e)}")
+                logger.error(f"Error type: {type(e).__name__}")
+                logger.error(f"Error traceback: {traceback.format_exc()}")
+                raise
     return ticker_cache[ticker_symbol]
 
 def get_cached_historical_data(ticker_symbol: str, days: int = 30):
@@ -376,11 +430,8 @@ async def get_options_analysis(
         logger.debug(f"yfinance version: {yf.__version__}")
         logger.debug(f"pandas version: {pd.__version__}")
         logger.debug(f"numpy version: {np.__version__}")
-        
-        # Log request details
-        logger.debug(f"Request details - Symbol: {symbol}, Expiration: {expiration_date}")
         logger.debug(f"Current time: {datetime.now()}")
-        logger.debug(f"Current timezone: {datetime.now().astimezone().tzinfo}")
+        logger.debug(f"Timezone: {datetime.now().astimezone().tzinfo}")
         
         # Add validation for the symbol
         if not symbol or not isinstance(symbol, str):
@@ -393,6 +444,10 @@ async def get_options_analysis(
         options_data = get_best_options_by_max_pain(symbol, expiration_date)
         logger.info(f"Successfully completed options analysis for {symbol}")
         return MaxPainResponse(**options_data)
+    except ValueError as e:
+        logger.error(f"ValueError in options analysis for {symbol}: {str(e)}")
+        logger.error(f"Error traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error in options analysis endpoint for {symbol}: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
