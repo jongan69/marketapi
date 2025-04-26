@@ -12,6 +12,8 @@ from cachetools import TTLCache
 from concurrent.futures import ThreadPoolExecutor
 import time
 import logging
+import sys
+import traceback
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +34,18 @@ def get_cached_ticker(ticker_symbol: str):
     logger.debug(f"Getting cached ticker for {ticker_symbol}")
     if ticker_symbol not in ticker_cache:
         logger.debug(f"Ticker {ticker_symbol} not in cache, creating new ticker")
-        ticker_cache[ticker_symbol] = yf.Ticker(ticker_symbol)
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            # Log basic ticker info to verify connection
+            logger.debug(f"Ticker info for {ticker_symbol}:")
+            logger.debug(f"Ticker info keys: {ticker.info.keys() if ticker.info else 'No info available'}")
+            logger.debug(f"Ticker history available: {ticker.history(period='1d').empty if hasattr(ticker, 'history') else 'No history method'}")
+            logger.debug(f"Ticker options available: {ticker.options if hasattr(ticker, 'options') else 'No options method'}")
+            ticker_cache[ticker_symbol] = ticker
+        except Exception as e:
+            logger.error(f"Error creating ticker for {ticker_symbol}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            raise
     return ticker_cache[ticker_symbol]
 
 def get_cached_historical_data(ticker_symbol: str, days: int = 30):
@@ -41,8 +54,19 @@ def get_cached_historical_data(ticker_symbol: str, days: int = 30):
     cache_key = f"{ticker_symbol}_{days}"
     if cache_key not in historical_data_cache:
         logger.debug(f"Historical data not in cache for {cache_key}, fetching new data")
-        ticker = get_cached_ticker(ticker_symbol)
-        historical_data_cache[cache_key] = ticker.history(period=f"{days}d")
+        try:
+            ticker = get_cached_ticker(ticker_symbol)
+            hist = ticker.history(period=f"{days}d")
+            logger.debug(f"Historical data fetch response for {ticker_symbol}:")
+            logger.debug(f"Data shape: {hist.shape if not hist.empty else 'Empty DataFrame'}")
+            logger.debug(f"Columns: {hist.columns.tolist() if not hist.empty else 'No columns'}")
+            logger.debug(f"Date range: {hist.index[0] if not hist.empty else 'No dates'} to {hist.index[-1] if not hist.empty else 'No dates'}")
+            logger.debug(f"Sample data: {hist.head(1).to_dict() if not hist.empty else 'No data'}")
+            historical_data_cache[cache_key] = hist
+        except Exception as e:
+            logger.error(f"Error fetching historical data for {ticker_symbol}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            raise
     return historical_data_cache[cache_key]
 
 def get_cached_options_data(ticker_symbol: str, expiration_date: str):
@@ -51,8 +75,21 @@ def get_cached_options_data(ticker_symbol: str, expiration_date: str):
     cache_key = f"{ticker_symbol}_{expiration_date}"
     if cache_key not in options_data_cache:
         logger.debug(f"Options data not in cache for {cache_key}, fetching new data")
-        ticker = get_cached_ticker(ticker_symbol)
-        options_data_cache[cache_key] = ticker.option_chain(expiration_date)
+        try:
+            ticker = get_cached_ticker(ticker_symbol)
+            chain = ticker.option_chain(expiration_date)
+            logger.debug(f"Options chain fetch response for {ticker_symbol}:")
+            logger.debug(f"Calls shape: {chain.calls.shape if not chain.calls.empty else 'Empty DataFrame'}")
+            logger.debug(f"Puts shape: {chain.puts.shape if not chain.puts.empty else 'Empty DataFrame'}")
+            logger.debug(f"Calls columns: {chain.calls.columns.tolist() if not chain.calls.empty else 'No columns'}")
+            logger.debug(f"Puts columns: {chain.puts.columns.tolist() if not chain.puts.empty else 'No columns'}")
+            logger.debug(f"Sample calls: {chain.calls.head(1).to_dict() if not chain.calls.empty else 'No calls'}")
+            logger.debug(f"Sample puts: {chain.puts.head(1).to_dict() if not chain.puts.empty else 'No puts'}")
+            options_data_cache[cache_key] = chain
+        except Exception as e:
+            logger.error(f"Error fetching options data for {ticker_symbol}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            raise
     return options_data_cache[cache_key]
 
 def calculate_historical_volatility(ticker_symbol: str, days: int = 30):
@@ -89,32 +126,53 @@ def get_best_options_by_max_pain(ticker_symbol, expiration_date=None):
     """
     logger.info(f"Starting max pain analysis for {ticker_symbol}")
     try:
+        logger.debug(f"Attempting to fetch ticker data for {ticker_symbol}")
         ticker = get_cached_ticker(ticker_symbol)
         
         try:
+            logger.debug(f"Fetching historical data for {ticker_symbol}")
             hist = get_cached_historical_data(ticker_symbol)
-            if hist.empty:
-                logger.error(f"No data available for {ticker_symbol}")
+            
+            if hist is None:
+                logger.error(f"Historical data fetch returned None for {ticker_symbol}")
                 raise ValueError(f"No data available for {ticker_symbol}")
+                
+            if hist.empty:
+                logger.error(f"Historical data is empty for {ticker_symbol}")
+                logger.debug(f"Historical data columns: {hist.columns.tolist() if not hist.empty else 'No columns'}")
+                raise ValueError(f"No data available for {ticker_symbol}")
+                
             spot_price = hist['Close'].iloc[-1]
             logger.debug(f"Current spot price for {ticker_symbol}: {spot_price}")
+            logger.debug(f"Historical data range: {hist.index[0]} to {hist.index[-1]}")
+            logger.debug(f"Historical data points: {len(hist)}")
         except Exception as e:
             logger.error(f"Error getting historical data for {ticker_symbol}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
             raise ValueError(f"No data available for {ticker_symbol}: {str(e)}")
         
         try:
+            logger.debug(f"Fetching options data for {ticker_symbol}")
             expirations = ticker.options
-            if not expirations:
-                logger.error(f"No options data available for {ticker_symbol}")
+            
+            if expirations is None:
+                logger.error(f"Options data fetch returned None for {ticker_symbol}")
                 raise ValueError(f"No options data available for {ticker_symbol}")
+                
+            if not expirations:
+                logger.error(f"No expiration dates available for {ticker_symbol}")
+                raise ValueError(f"No options data available for {ticker_symbol}")
+                
             logger.debug(f"Available expirations for {ticker_symbol}: {expirations}")
         except Exception as e:
             logger.error(f"Error getting expirations for {ticker_symbol}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
             raise ValueError(f"No options data available for {ticker_symbol}: {str(e)}")
         
         target_exp = expiration_date if expiration_date else expirations[0]
         if target_exp not in expirations:
             logger.error(f"Expiration date {target_exp} not available for {ticker_symbol}")
+            logger.debug(f"Available expirations: {expirations}")
             raise ValueError(f"Expiration date {target_exp} not available")
         
         try:
@@ -122,14 +180,24 @@ def get_best_options_by_max_pain(ticker_symbol, expiration_date=None):
             logger.debug(f"Historical volatility for {ticker_symbol}: {hist_vol:.4f}")
         except Exception as e:
             logger.warning(f"Error calculating historical volatility for {ticker_symbol}: {str(e)}")
+            logger.warning(f"Error type: {type(e).__name__}")
             hist_vol = 0.3
         
         try:
+            logger.debug(f"Fetching option chain for {ticker_symbol} with expiration {target_exp}")
             chain = get_cached_options_data(ticker_symbol, target_exp)
+            
+            if chain is None:
+                logger.error(f"Option chain fetch returned None for {ticker_symbol}")
+                raise ValueError(f"Failed to get option chain for {ticker_symbol}")
+                
             calls, puts = chain.calls, chain.puts
             logger.debug(f"Retrieved options chain for {ticker_symbol} - Calls: {len(calls)}, Puts: {len(puts)}")
+            logger.debug(f"Call strikes: {calls['strike'].tolist() if not calls.empty else 'No calls'}")
+            logger.debug(f"Put strikes: {puts['strike'].tolist() if not puts.empty else 'No puts'}")
         except Exception as e:
             logger.error(f"Error getting option chain for {ticker_symbol}: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
             raise ValueError(f"Failed to get option chain for {ticker_symbol}: {str(e)}")
         
         calls = calls[calls['openInterest'] > 0]
@@ -138,6 +206,8 @@ def get_best_options_by_max_pain(ticker_symbol, expiration_date=None):
         
         if len(calls) == 0 or len(puts) == 0:
             logger.error(f"No options with open interest found for {ticker_symbol}")
+            logger.debug(f"Available calls after filtering: {len(calls)}")
+            logger.debug(f"Available puts after filtering: {len(puts)}")
             raise ValueError(f"No options with open interest found for {ticker_symbol}")
         
         strikes = sorted(set(calls['strike']).union(set(puts['strike'])))
@@ -229,11 +299,24 @@ async def get_options_analysis(
     """Get options analysis for a specific stock based on max pain theory"""
     logger.info(f"Received request for options analysis - Symbol: {symbol}, Expiration: {expiration_date}")
     try:
+        # Log environment information
+        logger.debug("Environment Information:")
+        logger.debug(f"Python version: {sys.version}")
+        logger.debug(f"yfinance version: {yf.__version__}")
+        logger.debug(f"pandas version: {pd.__version__}")
+        logger.debug(f"numpy version: {np.__version__}")
+        
+        # Log request details
+        logger.debug(f"Request details - Symbol: {symbol}, Expiration: {expiration_date}")
+        logger.debug(f"Current time: {datetime.now()}")
+        
         options_data = get_best_options_by_max_pain(symbol, expiration_date)
         logger.info(f"Successfully completed options analysis for {symbol}")
         return MaxPainResponse(**options_data)
     except Exception as e:
         logger.error(f"Error in options analysis endpoint for {symbol}: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 async def process_stock(stock_data):
